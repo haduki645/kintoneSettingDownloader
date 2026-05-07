@@ -6,6 +6,7 @@ import {
   downloadKintoneFile,
   KINTONE_BASE_URL,
 } from "./kintone";
+import { minify } from "terser";
 
 // メイン処理
 async function main() {
@@ -59,6 +60,7 @@ async function main() {
 - \`acl.md\`: アプリ、レコード、フィールドのアクセス権設定一覧（設定が無い場合は未出力）
 - \`notification.md\`: アプリ、レコード、リマインダーの通知設定一覧（設定が無い場合は未出力）
 - \`customize/\`: \`customize.json\` で設定されているJavaScript/CSSファイルの実体が保存されるフォルダ / API: \`/k/v1/file.json\`
+- \`mergeFiles/\`: マージおよびミニファイされたJavaScript/CSSファイルが保存されるフォルダ
 `;
     await fs.writeFile(path.join(resultDir, "readme.md"), readmeContent, "utf-8");
   } catch (err) {
@@ -617,9 +619,26 @@ async function main() {
                 mergedContent += "\n\n";
               }
 
+              const mergeFilesDir = path.join(appDir, "mergeFiles");
+              await fs.mkdir(mergeFilesDir, { recursive: true });
+
               const outputFileName = `${scope}_merge.${type}`;
-              await fs.writeFile(path.join(appDir, outputFileName), mergedContent, "utf-8");
-              console.log(`  [OK] マージファイルを作成しました: ${outputFileName}`);
+              await fs.writeFile(path.join(mergeFilesDir, outputFileName), mergedContent, "utf-8");
+              console.log(`  [OK] マージファイルを作成しました: mergeFiles/${outputFileName}`);
+
+              // JSの場合はミニファイ版も作成
+              if (type === "js") {
+                try {
+                  const minified = await minify(mergedContent);
+                  if (minified.code) {
+                    const minFileName = `${scope}_merge.min.js`;
+                    await fs.writeFile(path.join(mergeFilesDir, minFileName), minified.code, "utf-8");
+                    console.log(`  [OK] ミニファイファイルを作成しました: mergeFiles/${minFileName}`);
+                  }
+                } catch (minifyErr) {
+                  console.error(`  [Error] ミニファイに失敗しました: ${outputFileName}`, minifyErr);
+                }
+              }
             }
           }
         }
