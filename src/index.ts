@@ -34,7 +34,7 @@ async function main() {
   try {
     await fs.rm(resultDir, { recursive: true, force: true });
     await fs.mkdir(resultDir, { recursive: true });
-    
+
     // readme.md の作成
     const readmeContent = `# ダウンロードされたファイルの説明
 
@@ -118,7 +118,7 @@ async function main() {
           } else if (fieldDef.lookup) {
             const lookup = fieldDef.lookup;
             const relatedAppId = lookup.relatedApp ? lookup.relatedApp.app : "不明";
-            
+
             let relatedAppName = "不明";
             if (relatedAppId !== "不明") {
               if (appNameCache[relatedAppId]) {
@@ -138,7 +138,7 @@ async function main() {
             const relatedKeyField = lookup.relatedKeyField;
             const mappings = lookup.fieldMappings || [];
             const rowCount = mappings.length > 0 ? mappings.length : 1;
-            
+
             let rowHtml = `    <tr>\n`;
             rowHtml += `      <td rowspan="${rowCount}">${prefix}${fieldCode}</td>\n`;
             if (relatedAppId !== "不明") {
@@ -176,28 +176,28 @@ async function main() {
         appLookupRows = await extractLookups(fieldsInfo.properties);
       }
       if (appLookupRows.length > 0) {
-        const mdContent = `# ルックアップ関係一覧\n\n## ${appName} (アプリID: ${appId})\n\n` +
-                          `<style>\n` +
-                          `  table { border-collapse: collapse; width: 100%; font-size: 14px; }\n` +
-                          `  th, td { border: 1px solid #ddd; padding: 12px 8px; text-align: left; vertical-align: middle; }\n` +
-                          `  th { background-color: #f4f5f7; color: #333; font-weight: bold; border-bottom: 2px solid #ccc; white-space: nowrap; }\n` +
-                          `  td { background-color: #fff; }\n` +
-                          `  tbody tr:hover td { background-color: #f9fafb; }\n` +
-                          `</style>\n\n` +
-                          `<table>\n` +
-                          `  <thead>\n` +
-                          `    <tr>\n` +
-                          `      <th>配置先フィールド</th>\n` +
-                          `      <th>取得先アプリ</th>\n` +
-                          `      <th>キーフィールド</th>\n` +
-                          `      <th>コピー先 (自アプリ)</th>\n` +
-                          `      <th>コピー元 (他アプリ)</th>\n` +
-                          `    </tr>\n` +
-                          `  </thead>\n` +
-                          `  <tbody>\n` +
-                          appLookupRows.join("") +
-                          `  </tbody>\n` +
-                          `</table>\n`;
+        const mdContent = `# ルックアップ関係一覧\n\n## [${appName} (アプリID: ${appId})](${KINTONE_BASE_URL}/k/${appId}/)\n\n` +
+          `<style>\n` +
+          `  table { border-collapse: collapse; width: 100%; font-size: 14px; }\n` +
+          `  th, td { border: 1px solid #ddd; padding: 12px 8px; text-align: left; vertical-align: middle; }\n` +
+          `  th { background-color: #f4f5f7; color: #333; font-weight: bold; border-bottom: 2px solid #ccc; white-space: nowrap; }\n` +
+          `  td { background-color: #fff; }\n` +
+          `  tbody tr:hover td { background-color: #f9fafb; }\n` +
+          `</style>\n\n` +
+          `<table>\n` +
+          `  <thead>\n` +
+          `    <tr>\n` +
+          `      <th>配置先フィールド</th>\n` +
+          `      <th>取得先アプリ</th>\n` +
+          `      <th>キーフィールド</th>\n` +
+          `      <th>コピー先 (自アプリ)</th>\n` +
+          `      <th>コピー元 (他アプリ)</th>\n` +
+          `    </tr>\n` +
+          `  </thead>\n` +
+          `  <tbody>\n` +
+          appLookupRows.join("") +
+          `  </tbody>\n` +
+          `</table>\n`;
         await fs.writeFile(path.join(appDir, "lookup_relation.md"), mdContent, "utf-8");
         console.log(`  [OK] lookup_relation.md を保存しました。`);
       }
@@ -217,14 +217,14 @@ async function main() {
 
       // view.md の生成
       if (viewsInfo && viewsInfo.views) {
-        let viewMdContent = `# 一覧設定 (アプリID: ${appId})\n\n`;
+        let viewMdContent = `# [一覧設定 (アプリID: ${appId})](${KINTONE_BASE_URL}/k/${appId}/)\n\n`;
         const style = `<style>\n` +
-                      `  table { border-collapse: collapse; width: 100%; font-size: 14px; }\n` +
-                      `  th, td { border: 1px solid #ddd; padding: 12px 8px; text-align: left; vertical-align: middle; }\n` +
-                      `  th { background-color: #f4f5f7; color: #333; font-weight: bold; border-bottom: 2px solid #ccc; white-space: nowrap; }\n` +
-                      `  td { background-color: #fff; }\n` +
-                      `  tbody tr:hover td { background-color: #f9fafb; }\n` +
-                      `</style>\n\n`;
+          `  table { border-collapse: collapse; width: 100%; font-size: 14px; }\n` +
+          `  th, td { border: 1px solid #ddd; padding: 12px 8px; text-align: left; vertical-align: middle; }\n` +
+          `  th { background-color: #f4f5f7; color: #333; font-weight: bold; border-bottom: 2px solid #ccc; white-space: nowrap; }\n` +
+          `  td { background-color: #fff; }\n` +
+          `  tbody tr:hover td { background-color: #f9fafb; }\n` +
+          `</style>\n\n`;
         viewMdContent += style;
         viewMdContent += `<table>\n`;
         viewMdContent += `  <thead>\n`;
