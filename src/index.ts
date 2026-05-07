@@ -7,6 +7,8 @@ import {
   KINTONE_BASE_URL,
 } from "./kintone";
 import { minify } from "terser";
+import axios from "axios";
+
 
 // メイン処理
 async function main() {
@@ -14,11 +16,17 @@ async function main() {
   const settingPath = path.join(process.cwd(), "setting.json");
   let appIds: number[] = [];
   let excludeFromMerge: string[] = [];
+  let enableAi = false;
+  let aiConfig = { baseUrl: "http://localhost:1234/v1", model: "local-model" };
+
   try {
     const settingContent = await fs.readFile(settingPath, "utf-8");
     const setting = JSON.parse(settingContent);
     appIds = setting.appIds;
     excludeFromMerge = setting.excludeFromMerge || [];
+    enableAi = setting.enableAi || false;
+    aiConfig = setting.aiConfig || { baseUrl: "http://localhost:1234/v1", model: "local-model" };
+
     if (!Array.isArray(appIds)) {
       throw new Error("setting.json の appIds パラメータが配列ではありません。");
     }
@@ -656,6 +664,15 @@ async function main() {
 
                     await fs.writeFile(path.join(promptsDir, promptFileName), finalPromptContent, "utf-8");
                     console.log(`  [OK] プロンプトファイルを作成しました: prompts/${promptFileName}`);
+
+                    if (enableAi) {
+                      console.log(`  [AI] ${functionalName} の回答を生成中...`);
+                      const aiResult = await callAiApi(finalPromptContent, aiConfig);
+                      const resultFileName = `${functionalName}_result.md`;
+                      await fs.writeFile(path.join(promptsDir, resultFileName), aiResult, "utf-8");
+                      console.log(`  [OK] AIの結果を保存しました: prompts/${resultFileName}`);
+                    }
+
                   }
                 }
 
@@ -686,5 +703,21 @@ async function main() {
   console.log(`\n=== すべての処理が完了しました ===`);
 }
 
+// AI API呼び出し用のヘルパー関数
+async function callAiApi(prompt: string, config: { baseUrl: string; model: string }) {
+  try {
+    const response = await axios.post(`${config.baseUrl}/chat/completions`, {
+      model: config.model,
+      messages: [{ role: "user", content: prompt }],
+      temperature: 0.7,
+    });
+    return response.data.choices[0].message.content;
+  } catch (error: any) {
+    console.error("AI APIの呼び出しに失敗しました:", error.message || error);
+    return `AI APIの呼び出しに失敗しました: ${error.message || error}`;
+  }
+}
+
 // 実行
 main().catch(console.error);
+
