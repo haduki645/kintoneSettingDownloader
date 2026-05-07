@@ -1,0 +1,425 @@
+import fs from "fs/promises";
+import path from "path";
+import {
+  getAuthHeaders,
+  fetchKintoneApi,
+  downloadKintoneFile,
+  KINTONE_BASE_URL,
+} from "./kintone";
+
+// メイン処理
+async function main() {
+  // 外部の JSON ファイルから設定を読み込む
+  const settingPath = path.join(process.cwd(), "setting.json");
+  let appIds: number[] = [];
+  try {
+    const settingContent = await fs.readFile(settingPath, "utf-8");
+    const setting = JSON.parse(settingContent);
+    appIds = setting.appIds;
+    if (!Array.isArray(appIds)) {
+      throw new Error("setting.json の appIds パラメータが配列ではありません。");
+    }
+  } catch (err) {
+    console.error("setting.json の読み込みに失敗しました:", err);
+    return;
+  }
+
+  // API呼び出し用のヘッダーを取得
+  const headers = getAuthHeaders();
+
+  // 実行ディレクトリ直下に result フォルダを作成
+  const resultDir = path.join(process.cwd(), "result");
+
+  // resultフォルダを初期化 (既存の場合は削除して再作成)
+  try {
+    await fs.rm(resultDir, { recursive: true, force: true });
+    await fs.mkdir(resultDir, { recursive: true });
+    
+    // readme.md の作成
+    const readmeContent = `# ダウンロードされたファイルの説明
+
+各アプリフォルダ内にダウンロードされるJSONファイルおよびディレクトリの意味は以下の通りです。
+
+- \`json/app.json\`: アプリの基本情報（アプリ名、説明、アイコンなど） / API: \`/k/v1/app.json\`
+- \`json/fields.json\`: フォームフィールド情報（各フィールドのタイプ、コード、設定など） / API: \`/k/v1/app/form/fields.json\`
+- \`json/views.json\`: 一覧設定情報（各一覧の表示形式、条件、フィールドなど） / API: \`/k/v1/app/views.json\`
+- \`json/customize.json\`: カスタマイズ情報（適用されているJavaScript/CSSファイルの設定など） / API: \`/k/v1/app/customize.json\`
+- \`json/appAcl.json\`: アプリのアクセス権設定 / API: \`/k/v1/app/acl.json\`
+- \`json/recordAcl.json\`: レコードのアクセス権設定 / API: \`/k/v1/record/acl.json\`
+- \`json/fieldAcl.json\`: フィールドのアクセス権設定 / API: \`/k/v1/field/acl.json\`
+- \`json/notificationsGeneral.json\`: アプリの条件通知設定 / API: \`/k/v1/app/notifications/general.json\`
+- \`json/notificationsPerRecord.json\`: レコードの条件通知設定 / API: \`/k/v1/app/notifications/perRecord.json\`
+- \`json/notificationsReminder.json\`: リマインダーの条件通知設定 / API: \`/k/v1/app/notifications/reminder.json\`
+- \`json/actions.json\`: アプリアクション設定 / API: \`/k/v1/app/actions.json\`
+- \`json/plugins.json\`: プラグイン設定 / API: \`/k/v1/app/plugins.json\`
+- \`lookup_relation.md\`: ルックアップ設定がされている場合に作成される関係一覧
+- \`view.md\`: アプリの一覧設定（絞り込み条件など）と各一覧へのリンク
+- \`customize/\`: \`customize.json\` で設定されているJavaScript/CSSファイルの実体が保存されるフォルダ / API: \`/k/v1/file.json\`
+`;
+    await fs.writeFile(path.join(resultDir, "readme.md"), readmeContent, "utf-8");
+  } catch (err) {
+    console.error("resultディレクトリの初期化に失敗しました:", err);
+    return;
+  }
+
+  // 取得したアプリ名をキャッシュしてAPI呼び出しを減らす
+  const appNameCache: Record<string, string> = {};
+
+  for (const appId of appIds) {
+    console.log(`=== アプリID: ${appId} の処理を開始します ===`);
+    try {
+      // 1. アプリ情報の取得 (GET /k/v1/app.json)
+      const appInfo = await fetchKintoneApi("/k/v1/app.json", appId, headers);
+      const appName = appInfo.name;
+
+      if (!appName) {
+        throw new Error(
+          "アプリ名が取得できませんでした。権限等を確認してください。",
+        );
+      }
+
+      // フォルダ名: 「アプリID_アプリ名」 (ファイル名に使用できない文字を置換)
+      const safeAppName = appName.replace(/[\\/:*?"<>|]/g, "_");
+      const appDir = path.join(resultDir, `${appId}_${safeAppName}`);
+
+      // アプリ固有のフォルダを作成
+      await fs.mkdir(appDir, { recursive: true });
+      const jsonDir = path.join(appDir, "json");
+      await fs.mkdir(jsonDir, { recursive: true });
+
+      // app.json を保存
+      await fs.writeFile(
+        path.join(jsonDir, "app.json"),
+        JSON.stringify(appInfo, null, 2),
+        "utf-8",
+      );
+      console.log(`  [OK] app.json を保存しました。`);
+
+      // 2. フォームフィールド情報の取得 (GET /k/v1/app/form/fields.json)
+      const fieldsInfo = await fetchKintoneApi(
+        "/k/v1/app/form/fields.json",
+        appId,
+        headers,
+      );
+      await fs.writeFile(
+        path.join(jsonDir, "fields.json"),
+        JSON.stringify(fieldsInfo, null, 2),
+        "utf-8",
+      );
+      console.log(`  [OK] fields.json を保存しました。`);
+
+      // ルックアップ情報の抽出
+      const extractLookups = async (properties: any, prefix = ""): Promise<string[]> => {
+        let rows: string[] = [];
+        for (const [fieldCode, fieldDef] of Object.entries(properties as Record<string, any>)) {
+          if (fieldDef.type === "SUBTABLE" && fieldDef.fields) {
+            const subRows = await extractLookups(fieldDef.fields, `${prefix}${fieldCode} (テーブル) &gt; `);
+            rows = rows.concat(subRows);
+          } else if (fieldDef.lookup) {
+            const lookup = fieldDef.lookup;
+            const relatedAppId = lookup.relatedApp ? lookup.relatedApp.app : "不明";
+            
+            let relatedAppName = "不明";
+            if (relatedAppId !== "不明") {
+              if (appNameCache[relatedAppId]) {
+                relatedAppName = appNameCache[relatedAppId];
+              } else {
+                try {
+                  const relatedAppInfo = await fetchKintoneApi("/k/v1/app.json", Number(relatedAppId), headers);
+                  relatedAppName = relatedAppInfo.name;
+                  appNameCache[relatedAppId] = relatedAppName;
+                } catch (e) {
+                  relatedAppName = "取得不可（権限エラー等）";
+                  appNameCache[relatedAppId] = relatedAppName;
+                }
+              }
+            }
+
+            const relatedKeyField = lookup.relatedKeyField;
+            const mappings = lookup.fieldMappings || [];
+            const rowCount = mappings.length > 0 ? mappings.length : 1;
+            
+            let rowHtml = `    <tr>\n`;
+            rowHtml += `      <td rowspan="${rowCount}">${prefix}${fieldCode}</td>\n`;
+            if (relatedAppId !== "不明") {
+              const appUrl = `${KINTONE_BASE_URL}/k/${relatedAppId}/`;
+              rowHtml += `      <td rowspan="${rowCount}"><a href="${appUrl}" target="_blank">${relatedAppName} (ID: ${relatedAppId})</a></td>\n`;
+            } else {
+              rowHtml += `      <td rowspan="${rowCount}">${relatedAppName} (ID: ${relatedAppId})</td>\n`;
+            }
+            rowHtml += `      <td rowspan="${rowCount}">${relatedKeyField}</td>\n`;
+
+            if (mappings.length > 0) {
+              rowHtml += `      <td>${mappings[0].field}</td>\n`;
+              rowHtml += `      <td>${mappings[0].relatedField}</td>\n`;
+              rowHtml += `    </tr>\n`;
+              for (let i = 1; i < mappings.length; i++) {
+                rowHtml += `    <tr>\n`;
+                rowHtml += `      <td>${mappings[i].field}</td>\n`;
+                rowHtml += `      <td>${mappings[i].relatedField}</td>\n`;
+                rowHtml += `    </tr>\n`;
+              }
+            } else {
+              rowHtml += `      <td>-</td>\n`;
+              rowHtml += `      <td>-</td>\n`;
+              rowHtml += `    </tr>\n`;
+            }
+
+            rows.push(rowHtml);
+          }
+        }
+        return rows;
+      };
+
+      let appLookupRows: string[] = [];
+      if (fieldsInfo && fieldsInfo.properties) {
+        appLookupRows = await extractLookups(fieldsInfo.properties);
+      }
+      if (appLookupRows.length > 0) {
+        const mdContent = `# ルックアップ関係一覧\n\n## ${appName} (アプリID: ${appId})\n\n` +
+                          `<style>\n` +
+                          `  table { border-collapse: collapse; width: 100%; font-size: 14px; }\n` +
+                          `  th, td { border: 1px solid #ddd; padding: 12px 8px; text-align: left; vertical-align: middle; }\n` +
+                          `  th { background-color: #f4f5f7; color: #333; font-weight: bold; border-bottom: 2px solid #ccc; white-space: nowrap; }\n` +
+                          `  td { background-color: #fff; }\n` +
+                          `  tbody tr:hover td { background-color: #f9fafb; }\n` +
+                          `</style>\n\n` +
+                          `<table>\n` +
+                          `  <thead>\n` +
+                          `    <tr>\n` +
+                          `      <th>配置先フィールド</th>\n` +
+                          `      <th>取得先アプリ</th>\n` +
+                          `      <th>キーフィールド</th>\n` +
+                          `      <th>コピー先 (自アプリ)</th>\n` +
+                          `      <th>コピー元 (他アプリ)</th>\n` +
+                          `    </tr>\n` +
+                          `  </thead>\n` +
+                          `  <tbody>\n` +
+                          appLookupRows.join("") +
+                          `  </tbody>\n` +
+                          `</table>\n`;
+        await fs.writeFile(path.join(appDir, "lookup_relation.md"), mdContent, "utf-8");
+        console.log(`  [OK] lookup_relation.md を保存しました。`);
+      }
+
+      // 3. 一覧設定情報の取得 (GET /k/v1/app/views.json)
+      const viewsInfo = await fetchKintoneApi(
+        "/k/v1/app/views.json",
+        appId,
+        headers,
+      );
+      await fs.writeFile(
+        path.join(jsonDir, "views.json"),
+        JSON.stringify(viewsInfo, null, 2),
+        "utf-8",
+      );
+      console.log(`  [OK] views.json を保存しました。`);
+
+      // view.md の生成
+      if (viewsInfo && viewsInfo.views) {
+        let viewMdContent = `# 一覧設定 (アプリID: ${appId})\n\n`;
+        const style = `<style>\n` +
+                      `  table { border-collapse: collapse; width: 100%; font-size: 14px; }\n` +
+                      `  th, td { border: 1px solid #ddd; padding: 12px 8px; text-align: left; vertical-align: middle; }\n` +
+                      `  th { background-color: #f4f5f7; color: #333; font-weight: bold; border-bottom: 2px solid #ccc; white-space: nowrap; }\n` +
+                      `  td { background-color: #fff; }\n` +
+                      `  tbody tr:hover td { background-color: #f9fafb; }\n` +
+                      `</style>\n\n`;
+        viewMdContent += style;
+        viewMdContent += `<table>\n`;
+        viewMdContent += `  <thead>\n`;
+        viewMdContent += `    <tr>\n`;
+        viewMdContent += `      <th>一覧名</th>\n`;
+        viewMdContent += `      <th>表示形式</th>\n`;
+        viewMdContent += `      <th>絞り込み条件</th>\n`;
+        viewMdContent += `    </tr>\n`;
+        viewMdContent += `  </thead>\n`;
+        viewMdContent += `  <tbody>\n`;
+
+        const viewsArray = Object.values(viewsInfo.views as Record<string, any>).sort((a, b) => Number(a.index) - Number(b.index));
+
+        for (const view of viewsArray) {
+          const viewUrl = `${KINTONE_BASE_URL}/k/${appId}/?view=${view.id}`;
+          const filterCond = view.filterCond ? `\`${view.filterCond}\`` : "なし";
+          viewMdContent += `    <tr>\n`;
+          viewMdContent += `      <td><a href="${viewUrl}" target="_blank">${view.name}</a></td>\n`;
+          viewMdContent += `      <td>${view.type}</td>\n`;
+          viewMdContent += `      <td>${filterCond}</td>\n`;
+          viewMdContent += `    </tr>\n`;
+        }
+
+        viewMdContent += `  </tbody>\n`;
+        viewMdContent += `</table>\n`;
+
+        await fs.writeFile(path.join(appDir, "view.md"), viewMdContent, "utf-8");
+        console.log(`  [OK] view.md を保存しました。`);
+      }
+
+      // 4. カスタマイズ情報の取得 (GET /k/v1/app/customize.json)
+      const customizeInfo = await fetchKintoneApi(
+        "/k/v1/app/customize.json",
+        appId,
+        headers,
+      );
+      await fs.writeFile(
+        path.join(jsonDir, "customize.json"),
+        JSON.stringify(customizeInfo, null, 2),
+        "utf-8",
+      );
+      console.log(`  [OK] customize.json を保存しました。`);
+
+      // 5. 各種権限設定の取得 (GET /k/v1/app/acl.json, /k/v1/record/acl.json, /k/v1/field/acl.json)
+      const appAclInfo = await fetchKintoneApi(
+        "/k/v1/app/acl.json",
+        appId,
+        headers,
+      );
+      await fs.writeFile(
+        path.join(jsonDir, "appAcl.json"),
+        JSON.stringify(appAclInfo, null, 2),
+        "utf-8",
+      );
+      console.log(`  [OK] appAcl.json を保存しました。`);
+
+      const recordAclInfo = await fetchKintoneApi(
+        "/k/v1/record/acl.json",
+        appId,
+        headers,
+      );
+      await fs.writeFile(
+        path.join(jsonDir, "recordAcl.json"),
+        JSON.stringify(recordAclInfo, null, 2),
+        "utf-8",
+      );
+      console.log(`  [OK] recordAcl.json を保存しました。`);
+
+      const fieldAclInfo = await fetchKintoneApi(
+        "/k/v1/field/acl.json",
+        appId,
+        headers,
+      );
+      await fs.writeFile(
+        path.join(jsonDir, "fieldAcl.json"),
+        JSON.stringify(fieldAclInfo, null, 2),
+        "utf-8",
+      );
+      console.log(`  [OK] fieldAcl.json を保存しました。`);
+
+      // 6. 通知設定の取得 (GET /k/v1/app/notifications/general.json, etc.)
+      const notificationsGeneralInfo = await fetchKintoneApi(
+        "/k/v1/app/notifications/general.json",
+        appId,
+        headers,
+      );
+      await fs.writeFile(
+        path.join(jsonDir, "notificationsGeneral.json"),
+        JSON.stringify(notificationsGeneralInfo, null, 2),
+        "utf-8",
+      );
+      console.log(`  [OK] notificationsGeneral.json を保存しました。`);
+
+      const notificationsPerRecordInfo = await fetchKintoneApi(
+        "/k/v1/app/notifications/perRecord.json",
+        appId,
+        headers,
+      );
+      await fs.writeFile(
+        path.join(jsonDir, "notificationsPerRecord.json"),
+        JSON.stringify(notificationsPerRecordInfo, null, 2),
+        "utf-8",
+      );
+      console.log(`  [OK] notificationsPerRecord.json を保存しました。`);
+
+      const notificationsReminderInfo = await fetchKintoneApi(
+        "/k/v1/app/notifications/reminder.json",
+        appId,
+        headers,
+      );
+      await fs.writeFile(
+        path.join(jsonDir, "notificationsReminder.json"),
+        JSON.stringify(notificationsReminderInfo, null, 2),
+        "utf-8",
+      );
+      console.log(`  [OK] notificationsReminder.json を保存しました。`);
+
+      // 7. アクション設定の取得 (GET /k/v1/app/actions.json)
+      const actionsInfo = await fetchKintoneApi(
+        "/k/v1/app/actions.json",
+        appId,
+        headers,
+      );
+      await fs.writeFile(
+        path.join(jsonDir, "actions.json"),
+        JSON.stringify(actionsInfo, null, 2),
+        "utf-8",
+      );
+      console.log(`  [OK] actions.json を保存しました。`);
+
+      // 8. プラグイン設定の取得 (GET /k/v1/app/plugins.json)
+      const pluginsInfo = await fetchKintoneApi(
+        "/k/v1/app/plugins.json",
+        appId,
+        headers,
+      );
+      await fs.writeFile(
+        path.join(jsonDir, "plugins.json"),
+        JSON.stringify(pluginsInfo, null, 2),
+        "utf-8",
+      );
+      console.log(`  [OK] plugins.json を保存しました。`);
+
+      // 9. カスタマイズファイル(JavaScript/CSS)の実体をダウンロード
+      const scopes = ["desktop", "mobile"];
+      const types = ["js", "css"];
+
+      // カスタマイズファイルの基点となるフォルダ
+      const customizeDir = path.join(appDir, "customize");
+
+      for (const scope of scopes) {
+        for (const type of types) {
+          const items = customizeInfo[scope]?.[type] || [];
+          for (let i = 0; i < items.length; i++) {
+            const item = items[i];
+            if (item.type === "FILE" && item.file && item.file.fileKey) {
+              // 保存先のディレクトリ (例: customize/desktop/js)
+              const targetDir = path.join(customizeDir, scope, type);
+              // フォルダが存在しない場合は作成 (複数回呼ばれても recursive: true なのでエラーにならない)
+              await fs.mkdir(targetDir, { recursive: true });
+
+              const fileKey = item.file.fileKey;
+              const fileName = item.file.name;
+
+              // 安全なファイル名にする
+              const safeFileName = fileName.replace(/[\\/:*?"<>|]/g, "_");
+              const targetFileName = safeFileName;
+              const targetFilePath = path.join(targetDir, targetFileName);
+
+              try {
+                const fileData = await downloadKintoneFile(fileKey, headers);
+                await fs.writeFile(targetFilePath, fileData);
+                console.log(
+                  `  [OK] カスタマイズファイルを保存しました: customize/${scope}/${type}/${targetFileName}`,
+                );
+              } catch (fileErr) {
+                console.error(
+                  `  [Error] カスタマイズファイルの保存に失敗しました: customize/${scope}/${type}/${targetFileName}`,
+                );
+              }
+            }
+          }
+        }
+      }
+
+      console.log(`=== アプリID: ${appId} の処理が完了しました ===\n`);
+    } catch (error) {
+      console.error(
+        `=== アプリID: ${appId} はエラーが発生したためスキップしました ===\n`,
+      );
+    }
+  }
+
+  console.log(`\n=== すべての処理が完了しました ===`);
+}
+
+// 実行
+main().catch(console.error);
