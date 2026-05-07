@@ -54,6 +54,8 @@ async function main() {
 - \`json/plugins.json\`: プラグイン設定 / API: \`/k/v1/app/plugins.json\`
 - \`lookup_relation.md\`: ルックアップ設定がされている場合に作成される関係一覧
 - \`view.md\`: アプリの一覧設定（絞り込み条件など）と各一覧へのリンク
+- \`acl.md\`: アプリ、レコード、フィールドのアクセス権設定一覧
+- \`notification.md\`: アプリ、レコード、リマインダーの通知設定一覧
 - \`customize/\`: \`customize.json\` で設定されているJavaScript/CSSファイルの実体が保存されるフォルダ / API: \`/k/v1/file.json\`
 `;
     await fs.writeFile(path.join(resultDir, "readme.md"), readmeContent, "utf-8");
@@ -305,6 +307,88 @@ async function main() {
       );
       console.log(`  [OK] fieldAcl.json を保存しました。`);
 
+      // acl.md の生成
+      let aclMdContent = `# [アクセス権設定 (アプリID: ${appId})](${KINTONE_BASE_URL}/k/${appId}/)\n\n`;
+      const style = `<style>\n` +
+        `  table { border-collapse: collapse; width: 100%; font-size: 14px; margin-bottom: 20px; }\n` +
+        `  th, td { border: 1px solid #ddd; padding: 12px 8px; text-align: left; vertical-align: middle; }\n` +
+        `  th { background-color: #f4f5f7; color: #333; font-weight: bold; border-bottom: 2px solid #ccc; white-space: nowrap; }\n` +
+        `  td { background-color: #fff; }\n` +
+        `  tbody tr:hover td { background-color: #f9fafb; }\n` +
+        `  .permission-tag { display: inline-block; padding: 2px 6px; border-radius: 4px; font-size: 11px; margin: 2px; color: #fff; }\n` +
+        `  .perm-ok { background-color: #28a745; }\n` +
+        `  .perm-ng { background-color: #dc3545; }\n` +
+        `</style>\n\n`;
+      aclMdContent += style;
+
+      // 5-1. アプリのアクセス権
+      aclMdContent += `## アプリのアクセス権\n\n`;
+      aclMdContent += `<table>\n  <thead>\n    <tr>\n      <th>対象</th>\n      <th>レコード閲覧</th>\n      <th>レコード追加</th>\n      <th>レコード編集</th>\n      <th>レコード削除</th>\n      <th>アプリ管理</th>\n      <th>ファイル出力</th>\n      <th>ファイル取り込み</th>\n    </tr>\n  </thead>\n  <tbody>\n`;
+      for (const right of appAclInfo.rights || []) {
+        const entity = right.entity.code || right.entity.type;
+        const check = (val: boolean) => val ? `<span class="permission-tag perm-ok">○</span>` : `<span class="permission-tag perm-ng">×</span>`;
+        aclMdContent += `    <tr>\n`;
+        aclMdContent += `      <td>${entity}</td>\n`;
+        aclMdContent += `      <td>${check(right.recordViewable)}</td>\n`;
+        aclMdContent += `      <td>${check(right.recordAddable)}</td>\n`;
+        aclMdContent += `      <td>${check(right.recordEditable)}</td>\n`;
+        aclMdContent += `      <td>${check(right.recordDeletable)}</td>\n`;
+        aclMdContent += `      <td>${check(right.appEditable)}</td>\n`;
+        aclMdContent += `      <td>${check(right.fileExportable)}</td>\n`;
+        aclMdContent += `      <td>${check(right.fileImportable)}</td>\n`;
+        aclMdContent += `    </tr>\n`;
+      }
+      aclMdContent += `  </tbody>\n</table>\n\n`;
+
+      // 5-2. レコードのアクセス権
+      aclMdContent += `## レコードのアクセス権\n\n`;
+      aclMdContent += `<table>\n  <thead>\n    <tr>\n      <th>優先度</th>\n      <th>条件</th>\n      <th>対象</th>\n      <th>閲覧</th>\n      <th>編集</th>\n      <th>削除</th>\n    </tr>\n  </thead>\n  <tbody>\n`;
+      let priority = 1;
+      for (const right of recordAclInfo.rights || []) {
+        const rowCount = right.entities.length;
+        for (let i = 0; i < rowCount; i++) {
+          const entityRight = right.entities[i];
+          const entity = entityRight.entity.code || entityRight.entity.type;
+          const check = (val: boolean) => val ? `<span class="permission-tag perm-ok">○</span>` : `<span class="permission-tag perm-ng">×</span>`;
+          aclMdContent += `    <tr>\n`;
+          if (i === 0) {
+            aclMdContent += `      <td rowspan="${rowCount}">${priority}</td>\n`;
+            aclMdContent += `      <td rowspan="${rowCount}">${right.filterCond || "なし"}</td>\n`;
+          }
+          aclMdContent += `      <td>${entity}</td>\n`;
+          aclMdContent += `      <td>${check(entityRight.viewable)}</td>\n`;
+          aclMdContent += `      <td>${check(entityRight.editable)}</td>\n`;
+          aclMdContent += `      <td>${check(entityRight.deletable)}</td>\n`;
+          aclMdContent += `    </tr>\n`;
+        }
+        priority++;
+      }
+      aclMdContent += `  </tbody>\n</table>\n\n`;
+
+      // 5-3. フィールドのアクセス権
+      aclMdContent += `## フィールドのアクセス権\n\n`;
+      aclMdContent += `<table>\n  <thead>\n    <tr>\n      <th>フィールドコード</th>\n      <th>対象</th>\n      <th>閲覧</th>\n      <th>編集</th>\n    </tr>\n  </thead>\n  <tbody>\n`;
+      for (const right of fieldAclInfo.rights || []) {
+        const rowCount = right.entities.length;
+        for (let i = 0; i < rowCount; i++) {
+          const entityRight = right.entities[i];
+          const entity = entityRight.entity.code || entityRight.entity.type;
+          const check = (val: boolean) => val ? `<span class="permission-tag perm-ok">○</span>` : `<span class="permission-tag perm-ng">×</span>`;
+          aclMdContent += `    <tr>\n`;
+          if (i === 0) {
+            aclMdContent += `      <td rowspan="${rowCount}">${right.code}</td>\n`;
+          }
+          aclMdContent += `      <td>${entity}</td>\n`;
+          aclMdContent += `      <td>${check(entityRight.viewable)}</td>\n`;
+          aclMdContent += `      <td>${check(entityRight.editable)}</td>\n`;
+          aclMdContent += `    </tr>\n`;
+        }
+      }
+      aclMdContent += `  </tbody>\n</table>\n\n`;
+
+      await fs.writeFile(path.join(appDir, "acl.md"), aclMdContent, "utf-8");
+      console.log(`  [OK] acl.md を保存しました。`);
+
       // 6. 通知設定の取得 (GET /k/v1/app/notifications/general.json, etc.)
       const notificationsGeneralInfo = await fetchKintoneApi(
         "/k/v1/app/notifications/general.json",
@@ -341,6 +425,74 @@ async function main() {
         "utf-8",
       );
       console.log(`  [OK] notificationsReminder.json を保存しました。`);
+
+      // notification.md の生成
+      let notifMdContent = `# [通知設定 (アプリID: ${appId})](${KINTONE_BASE_URL}/k/${appId}/)\n\n`;
+      notifMdContent += style; // styleはacl.md生成時のものを流用
+
+      // 6-1. アプリの条件通知
+      notifMdContent += `## アプリの条件通知\n\n`;
+      notifMdContent += `<table>\n  <thead>\n    <tr>\n      <th>対象</th>\n      <th>レコード追加</th>\n      <th>編集</th>\n      <th>ステータス更新</th>\n      <th>コメント追加</th>\n      <th>ファイル読み込み</th>\n    </tr>\n  </thead>\n  <tbody>\n`;
+      for (const notif of notificationsGeneralInfo.generalNotifications || []) {
+        const entity = notif.entity.code || notif.entity.type;
+        const check = (val: boolean) => val ? `<span class="permission-tag perm-ok">○</span>` : `<span class="permission-tag perm-ng">×</span>`;
+        notifMdContent += `    <tr>\n`;
+        notifMdContent += `      <td>${entity}</td>\n`;
+        notifMdContent += `      <td>${check(notif.recordAdded)}</td>\n`;
+        notifMdContent += `      <td>${check(notif.recordEdited)}</td>\n`;
+        notifMdContent += `      <td>${check(notif.statusChanged)}</td>\n`;
+        notifMdContent += `      <td>${check(notif.commentAdded)}</td>\n`;
+        notifMdContent += `      <td>${check(notif.fileImported)}</td>\n`;
+        notifMdContent += `    </tr>\n`;
+      }
+      notifMdContent += `  </tbody>\n</table>\n\n`;
+
+      // 6-2. レコードの条件通知
+      notifMdContent += `## レコードの条件通知\n\n`;
+      notifMdContent += `<table>\n  <thead>\n    <tr>\n      <th>条件</th>\n      <th>対象</th>\n      <th>通知内容</th>\n    </tr>\n  </thead>\n  <tbody>\n`;
+      for (const notif of notificationsPerRecordInfo.perRecordNotifications || []) {
+        const rowCount = notif.targets.length;
+        for (let i = 0; i < rowCount; i++) {
+          const target = notif.targets[i];
+          const entity = target.entity.code || target.entity.type;
+          notifMdContent += `    <tr>\n`;
+          if (i === 0) {
+            notifMdContent += `      <td rowspan="${rowCount}">${notif.filterCond || "なし"}</td>\n`;
+          }
+          notifMdContent += `      <td>${entity}</td>\n`;
+          if (i === 0) {
+            notifMdContent += `      <td rowspan="${rowCount}">${notif.title || ""}</td>\n`;
+          }
+          notifMdContent += `    </tr>\n`;
+        }
+      }
+      notifMdContent += `  </tbody>\n</table>\n\n`;
+
+      // 6-3. リマインダーの条件通知
+      notifMdContent += `## リマインダーの条件通知\n\n`;
+      notifMdContent += `<table>\n  <thead>\n    <tr>\n      <th>条件</th>\n      <th>通知タイミング</th>\n      <th>対象</th>\n      <th>通知内容</th>\n    </tr>\n  </thead>\n  <tbody>\n`;
+      for (const notif of notificationsReminderInfo.reminderNotifications || []) {
+        const rowCount = notif.targets.length;
+        const timing = notif.timing ? `${notif.timing.code} ${notif.timing.days}日 ${notif.timing.hours}時間 ${notif.timing.minutes}分` : "";
+        for (let i = 0; i < rowCount; i++) {
+          const target = notif.targets[i];
+          const entity = target.entity.code || target.entity.type;
+          notifMdContent += `    <tr>\n`;
+          if (i === 0) {
+            notifMdContent += `      <td rowspan="${rowCount}">${notif.filterCond || "なし"}</td>\n`;
+            notifMdContent += `      <td rowspan="${rowCount}">${timing}</td>\n`;
+          }
+          notifMdContent += `      <td>${entity}</td>\n`;
+          if (i === 0) {
+            notifMdContent += `      <td rowspan="${rowCount}">${notif.title || ""}</td>\n`;
+          }
+          notifMdContent += `    </tr>\n`;
+        }
+      }
+      notifMdContent += `  </tbody>\n</table>\n\n`;
+
+      await fs.writeFile(path.join(appDir, "notification.md"), notifMdContent, "utf-8");
+      console.log(`  [OK] notification.md を保存しました。`);
 
       // 7. アクション設定の取得 (GET /k/v1/app/actions.json)
       const actionsInfo = await fetchKintoneApi(
