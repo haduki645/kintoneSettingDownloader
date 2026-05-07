@@ -1,4 +1,14 @@
 {
+  "excludeFromMerge": [
+    "010_config.js",
+    "020_pastRecord.js",
+    "030_commonFunction.js",
+    "index_search_moduleV2.js",
+    "070_newsSystemCommonLibs.js",
+    "KintoneRestAPIClient_v2.0.35.min.js",
+    "Kuc.js",
+    "sweetalert2.min.js"
+  ],
   "appIds": [
     32,
     217,

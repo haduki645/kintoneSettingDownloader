@@ -12,15 +12,17 @@ async function main() {
   // 外部の JSON ファイルから設定を読み込む
   const settingPath = path.join(process.cwd(), "setting.json");
   let appIds: number[] = [];
+  let excludeFromMerge: string[] = [];
   try {
     const settingContent = await fs.readFile(settingPath, "utf-8");
     const setting = JSON.parse(settingContent);
     appIds = setting.appIds;
+    excludeFromMerge = setting.excludeFromMerge || [];
     if (!Array.isArray(appIds)) {
       throw new Error("setting.json の appIds パラメータが配列ではありません。");
     }
   } catch (err) {
-    console.error("setting.json の読み込みに失敗しました:", err);
+    console.error("setting.json の読み取りに失敗しました:", err);
     return;
   }
 
@@ -588,6 +590,36 @@ async function main() {
                   `  [Error] カスタマイズファイルの保存に失敗しました: customize/${scope}/${type}/${targetFileName}`,
                 );
               }
+            }
+          }
+        }
+      }
+
+      // 10. カスタマイズファイルをマージ
+      for (const scope of scopes) {
+        for (const type of types) {
+          const targetDir = path.join(customizeDir, scope, type);
+          if (await fs.stat(targetDir).catch(() => null)) {
+            const files = (await fs.readdir(targetDir))
+              .filter(file => file.endsWith(`.${type}`))
+              .filter(file => !excludeFromMerge.includes(file))
+              .sort();
+
+            if (files.length > 0) {
+              let mergedContent = "";
+              const commentStart = "/* --- ";
+              const commentEnd = " --- */";
+
+              for (const file of files) {
+                const content = await fs.readFile(path.join(targetDir, file), "utf-8");
+                mergedContent += `${commentStart}Original File: ${file}${commentEnd}\n`;
+                mergedContent += content;
+                mergedContent += "\n\n";
+              }
+
+              const outputFileName = `${scope}_merge.${type}`;
+              await fs.writeFile(path.join(appDir, outputFileName), mergedContent, "utf-8");
+              console.log(`  [OK] マージファイルを作成しました: ${outputFileName}`);
             }
           }
         }
