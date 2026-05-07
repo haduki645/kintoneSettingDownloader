@@ -27,6 +27,15 @@ async function main() {
     return;
   }
 
+  // prompt.md の読み込み
+  const promptTemplatePath = path.join(process.cwd(), "prompt.md");
+  let promptTemplate = "";
+  try {
+    promptTemplate = await fs.readFile(promptTemplatePath, "utf-8");
+  } catch (err) {
+    console.warn("prompt.md が見つからないため、プロンプト生成はスキップされます。");
+  }
+
   // API呼び出し用のヘッダーを取得
   const headers = getAuthHeaders();
 
@@ -626,8 +635,30 @@ async function main() {
               await fs.writeFile(path.join(mergeFilesDir, outputFileName), mergedContent, "utf-8");
               console.log(`  [OK] マージファイルを作成しました: mergeFiles/${outputFileName}`);
 
-              // JSの場合はミニファイ版も作成
+              // JSの場合はプロンプト生成とミニファイ版作成
               if (type === "js") {
+                // プロンプト生成の実行
+                if (promptTemplate) {
+                  const markerRegex = /#仕様書@\{(.+?)\}/g;
+                  let match;
+                  while ((match = markerRegex.exec(mergedContent)) !== null) {
+                    const functionalName = match[1];
+                    const marker = match[0];
+                    const promptFileName = `${functionalName}.md`;
+                    const promptsDir = path.join(appDir, "prompts");
+                    await fs.mkdir(promptsDir, { recursive: true });
+
+                    const finalPromptContent = promptTemplate
+                      .split("{{fileName}}").join(outputFileName)
+                      .split("{{marker}}").join(marker)
+                      .split("{{functionalName}}").join(functionalName)
+                      .split("{{content}}").join(mergedContent);
+
+                    await fs.writeFile(path.join(promptsDir, promptFileName), finalPromptContent, "utf-8");
+                    console.log(`  [OK] プロンプトファイルを作成しました: prompts/${promptFileName}`);
+                  }
+                }
+
                 try {
                   const minified = await minify(mergedContent);
                   if (minified.code) {
