@@ -92,9 +92,28 @@
     808,
     807
   ],
-  "enableAi": true,
+  "enableAi": false,
   "aiConfig": {
     "baseUrl": "http://localhost:1234/v1",
     "model": "gemma-4-e4b"
+  },
+  "workspaceConfig": {
+    "folders": [
+      {
+        "path": "."
+      }
+    ],
+    "settings": {
+      "files.exclude": {
+        "**/json": true,
+        "**/desktop_merge.min.js": true,
+        "**/desktop_merge.css": true,
+        "**/customize/": true,
+        "**/prompts/": true
+      },
+      "workbench.editorAssociations": {
+        "*.md": "vscode.markdown.preview.editor"
+      }
+    }
   }
 }

@@ -8,6 +8,7 @@ import {
 } from "./kintone";
 import { minify } from "terser";
 import axios from "axios";
+import { exec } from "child_process";
 
 
 // メイン処理
@@ -18,6 +19,7 @@ async function main() {
   let excludeFromMerge: string[] = [];
   let enableAi = false;
   let aiConfig = { baseUrl: "http://localhost:1234/v1", model: "local-model" };
+  let workspaceConfig: any = null;
 
   try {
     const settingContent = await fs.readFile(settingPath, "utf-8");
@@ -26,6 +28,7 @@ async function main() {
     excludeFromMerge = setting.excludeFromMerge || [];
     enableAi = setting.enableAi || false;
     aiConfig = setting.aiConfig || { baseUrl: "http://localhost:1234/v1", model: "local-model" };
+    workspaceConfig = setting.workspaceConfig || null;
 
     if (!Array.isArray(appIds)) {
       throw new Error("setting.json の appIds パラメータが配列ではありません。");
@@ -80,6 +83,13 @@ async function main() {
 - \`mergeFiles/\`: マージおよびミニファイされたJavaScript/CSSファイルが保存されるフォルダ
 `;
     await fs.writeFile(path.join(resultDir, "readme.md"), readmeContent, "utf-8");
+
+    // .code-workspace の作成
+    if (workspaceConfig) {
+      const workspacePath = path.join(resultDir, "result.code-workspace");
+      await fs.writeFile(workspacePath, JSON.stringify(workspaceConfig, null, 2), "utf-8");
+      console.log(`[OK] result.code-workspace を作成しました。`);
+    }
   } catch (err) {
     console.error("resultディレクトリの初期化に失敗しました:", err);
     return;
@@ -619,13 +629,35 @@ async function main() {
         for (const type of types) {
           const targetDir = path.join(customizeDir, scope, type);
           if (await fs.stat(targetDir).catch(() => null)) {
-            const files = (await fs.readdir(targetDir))
-              .filter(file => file.endsWith(`.${type}`))
+            const allFiles = (await fs.readdir(targetDir)).filter(file => file.endsWith(`.${type}`));
+            const files = allFiles
               .filter(file => !excludeFromMerge.includes(file))
+              .sort();
+            const excludedFiles = allFiles
+              .filter(file => excludeFromMerge.includes(file))
               .sort();
 
             if (files.length > 0) {
               let mergedContent = "";
+
+              // ヘッダーの作成
+              mergedContent += "/*\n";
+              mergedContent += ` アプリ名: ${appName}\n`;
+              mergedContent += ` アプリURL: ${KINTONE_BASE_URL}/k/${appId}/\n`;
+              mergedContent += ` マージしたファイルの一覧:\n`;
+              files.forEach(f => {
+                mergedContent += ` - ${f}\n`;
+              });
+              mergedContent += ` 除外したファイルの一覧:\n`;
+              if (excludedFiles.length > 0) {
+                excludedFiles.forEach(f => {
+                  mergedContent += ` - ${f}\n`;
+                });
+              } else {
+                mergedContent += ` - なし\n`;
+              }
+              mergedContent += "*/\n\n";
+
               const commentStart = "/* --- ";
               const commentEnd = " --- */";
 
@@ -701,6 +733,17 @@ async function main() {
   }
 
   console.log(`\n=== すべての処理が完了しました ===`);
+
+  if (workspaceConfig) {
+    const workspacePath = path.join(resultDir, "result.code-workspace");
+    console.log(`[Info] result.code-workspace を開きます...`);
+    exec(`code "${workspacePath}"`, (err) => {
+      if (err) {
+        // code コマンドが使えない場合は start コマンドを試す
+        exec(`start "" "${workspacePath}"`);
+      }
+    });
+  }
 }
 
 // AI API呼び出し用のヘルパー関数
