@@ -263,27 +263,46 @@ export function generateFormMd(appId: number, fieldsInfo: any, layoutInfo: any):
   formMdContent += style;
 
   const renderFields = (fields: any[]) => {
-    let html = `<table>\n  <thead>\n    <tr>\n      <th>フィールド名</th>\n      <th>フィールドコード</th>\n      <th>タイプ</th>\n      <th>必須</th>\n    </tr>\n  </thead>\n  <tbody>\n`;
+    let html = `<table>\n  <thead>\n    <tr>\n      <th>フィールド名</th>\n      <th>フィールドコード</th>\n      <th>タイプ</th>\n      <th>必須</th>\n      <th>設定詳細</th>\n    </tr>\n  </thead>\n  <tbody>\n`;
     for (const field of fields) {
       if (field.type === 'HR') {
-        html += `    <tr>\n      <td>(横線)</td>\n      <td>-</td>\n      <td>${field.type}</td>\n      <td>-</td>\n    </tr>\n`;
+        html += `    <tr>\n      <td>(横線)</td>\n      <td>-</td>\n      <td>${field.type}</td>\n      <td>-</td>\n      <td>-</td>\n    </tr>\n`;
         continue;
       }
       if (field.type === 'LABEL') {
         const labelText = field.label ? field.label.replace(/<[^>]*>?/gm, '') : '(ラベル)';
-        html += `    <tr>\n      <td>${labelText}</td>\n      <td>-</td>\n      <td>${field.type}</td>\n      <td>-</td>\n    </tr>\n`;
+        html += `    <tr>\n      <td>${labelText}</td>\n      <td>-</td>\n      <td>${field.type}</td>\n      <td>-</td>\n      <td>-</td>\n    </tr>\n`;
         continue;
       }
       if (field.type === 'SPACER') {
-        html += `    <tr>\n      <td>(スペース: ${field.elementId || 'IDなし'})</td>\n      <td>-</td>\n      <td>${field.type}</td>\n      <td>-</td>\n    </tr>\n`;
+        html += `    <tr>\n      <td>(スペース: ${field.elementId || 'IDなし'})</td>\n      <td>-</td>\n      <td>${field.type}</td>\n      <td>-</td>\n      <td>-</td>\n    </tr>\n`;
         continue;
       }
 
       const prop = flatProperties[field.code];
+      let detailParts: string[] = [];
       if (prop) {
-        html += `    <tr>\n      <td>${prop.label || '設定なし'}</td>\n      <td>${field.code}</td>\n      <td>${prop.type}</td>\n      <td>${prop.required ? '○' : '-'}</td>\n    </tr>\n`;
+        if (prop.options) {
+          const options = Object.values(prop.options as Record<string, any>)
+            .sort((a, b) => Number(a.index) - Number(b.index))
+            .map(opt => opt.label)
+            .join(", ");
+          detailParts.push(`選択肢: ${options}`);
+        }
+        if (prop.expression) {
+          detailParts.push(`計算式: <code>${prop.expression}</code>`);
+        }
+        if (prop.lookup) {
+          const lookup = prop.lookup;
+          detailParts.push(`ルックアップ先: アプリID ${lookup.relatedApp.app} (キー: ${lookup.relatedKeyField})`);
+        }
+      }
+      const details = detailParts.join('<br>') || '-';
+
+      if (prop) {
+        html += `    <tr>\n      <td>${prop.label || '設定なし'}</td>\n      <td>${field.code}</td>\n      <td>${prop.type}</td>\n      <td>${prop.required ? '○' : '-'}</td>\n      <td>${details}</td>\n    </tr>\n`;
       } else {
-        html += `    <tr>\n      <td>不明</td>\n      <td>${field.code}</td>\n      <td>${field.type}</td>\n      <td>-</td>\n    </tr>\n`;
+        html += `    <tr>\n      <td>不明</td>\n      <td>${field.code}</td>\n      <td>${field.type}</td>\n      <td>-</td>\n      <td>${details}</td>\n    </tr>\n`;
       }
     }
     html += `  </tbody>\n</table>\n`;
