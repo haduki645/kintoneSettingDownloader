@@ -81,6 +81,8 @@ async function main() {
 - \`notification.md\`: アプリ、レコード、リマインダーの通知設定一覧（設定が無い場合は未出力）
 - \`customize/\`: \`customize.json\` で設定されているJavaScript/CSSファイルの実体が保存されるフォルダ / API: \`/k/v1/file.json\`
 - \`mergeFiles/\`: マージおよびミニファイされたJavaScript/CSSファイルが保存されるフォルダ
+- \`prompts/\`: 仕様書マーカーから生成された AI へのプロンプトファイルが保存されるフォルダ
+- \`prompts_results/\`: AI によって生成された回答（仕様書）が保存されるフォルダ
 `;
     await fs.writeFile(path.join(resultDir, "readme.md"), readmeContent, "utf-8");
 
@@ -686,7 +688,9 @@ async function main() {
                     const marker = match[0];
                     const promptFileName = `${functionalName}.md`;
                     const promptsDir = path.join(appDir, "prompts");
+                    const promptsResultsDir = path.join(appDir, "prompts_results");
                     await fs.mkdir(promptsDir, { recursive: true });
+                    await fs.mkdir(promptsResultsDir, { recursive: true });
 
                     const finalPromptContent = promptTemplate
                       .split("{{fileName}}").join(outputFileName)
@@ -698,11 +702,13 @@ async function main() {
                     console.log(`  [OK] プロンプトファイルを作成しました: prompts/${promptFileName}`);
 
                     if (enableAi) {
+                      console.time('生成時間')
                       console.log(`  [AI] ${functionalName} の回答を生成中...`);
                       const aiResult = await callAiApi(finalPromptContent, aiConfig);
                       const resultFileName = `${functionalName}_result.md`;
-                      await fs.writeFile(path.join(promptsDir, resultFileName), aiResult, "utf-8");
-                      console.log(`  [OK] AIの結果を保存しました: prompts/${resultFileName}`);
+                      await fs.writeFile(path.join(promptsResultsDir, resultFileName), aiResult, "utf-8");
+                      console.timeEnd('生成時間')
+                      console.log(`  [OK] AIの結果を保存しました: prompts_results/${resultFileName}`);
                     }
 
                   }
