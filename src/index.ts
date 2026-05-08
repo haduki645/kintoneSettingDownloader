@@ -16,7 +16,9 @@ import {
   generateNotificationMd,
 } from "./mdGenerators";
 import {
-  initializeResultDirs,
+  getTimestampedDirName,
+  getPastResultDirs,
+  cleanupOldResults,
   minifyJs,
   getReadmeContent,
 } from "./fileOps";
@@ -39,10 +41,18 @@ async function main() {
 
   const promptTemplates = await loadPromptTemplates();
   const headers = getAuthHeaders();
-  const resultDir = path.join(process.cwd(), "result");
-  const resultOldDir = path.join(process.cwd(), "result_old");
+  const baseResultDir = path.join(process.cwd(), "result");
+  
+  // 過去の結果ディレクトリを取得
+  const maxCacheCount = setting.maxCacheCount || 5;
+  const pastDirsNames = await getPastResultDirs(baseResultDir);
+  const pastResultDirs = pastDirsNames.slice(0, maxCacheCount).map(name => path.join(baseResultDir, name));
 
-  await initializeResultDirs(resultDir, resultOldDir);
+  // 今回の結果ディレクトリを作成
+  const currentResultDirName = getTimestampedDirName();
+  const resultDir = path.join(baseResultDir, currentResultDirName);
+
+  await fs.mkdir(resultDir, { recursive: true });
   await fs.writeFile(path.join(resultDir, "readme.md"), getReadmeContent(), "utf-8");
 
   if (setting.workspaceConfig) {
@@ -57,8 +67,11 @@ async function main() {
   const appNameCache: Record<string, string> = {};
 
   for (const appId of setting.appIds) {
-    await processApp(appId, setting, headers, resultDir, resultOldDir, promptTemplates, appNameCache);
+    await processApp(appId, setting, headers, resultDir, pastResultDirs, promptTemplates, appNameCache);
   }
+
+  // 古い結果を整理
+  await cleanupOldResults(baseResultDir, maxCacheCount);
 
   console.log(`\n=== すべての処理が完了しました ===`);
 
@@ -110,7 +123,7 @@ async function processApp(
   setting: Setting,
   headers: any,
   resultDir: string,
-  resultOldDir: string,
+  pastResultDirs: string[],
   promptTemplates: string[],
   appNameCache: Record<string, string>
 ) {
@@ -172,7 +185,7 @@ async function processApp(
     await fs.writeFile(path.join(jsonDir, "plugins.json"), JSON.stringify(plugins, null, 2), "utf-8");
 
     // カスタマイズファイルのダウンロードとマージ
-    await handleCustomizeFiles(appId, appName, appDir, customizeInfo, headers, setting, promptTemplates, resultOldDir, safeAppName);
+    await handleCustomizeFiles(appId, appName, appDir, customizeInfo, headers, setting, promptTemplates, pastResultDirs, safeAppName);
 
     console.log(`=== アプリID: ${appId} の処理が完了しました ===\n`);
   } catch (error) {
@@ -239,7 +252,7 @@ async function handleLookups(appId: number, appName: string, appDir: string, fie
  */
 async function handleCustomizeFiles(
   appId: number, appName: string, appDir: string, customizeInfo: any, headers: any,
-  setting: Setting, promptTemplates: string[], resultOldDir: string, safeAppName: string
+  setting: Setting, promptTemplates: string[], pastResultDirs: string[], safeAppName: string
 ) {
   const scopes = ["desktop", "mobile"];
   const types = ["js", "css"];
@@ -263,7 +276,7 @@ async function handleCustomizeFiles(
       }
 
       if (filesToMerge.length > 0) {
-        await processMergeAndAi(appId, appName, appDir, scope, type, filesToMerge, setting, promptTemplates, resultOldDir, safeAppName);
+        await processMergeAndAi(appId, appName, appDir, scope, type, filesToMerge, setting, promptTemplates, pastResultDirs, safeAppName);
       }
     }
   }
@@ -274,7 +287,7 @@ async function handleCustomizeFiles(
  */
 async function processMergeAndAi(
   appId: number, appName: string, appDir: string, scope: string, type: string,
-  allFilePaths: string[], setting: Setting, promptTemplates: string[], resultOldDir: string, safeAppName: string
+  allFilePaths: string[], setting: Setting, promptTemplates: string[], pastResultDirs: string[], safeAppName: string
 ) {
   const exclude = setting.excludeFromMerge || [];
   const files = allFilePaths.filter(p => !exclude.includes(path.basename(p))).sort();
@@ -296,7 +309,7 @@ async function processMergeAndAi(
 
   if (type === "js") {
     if (promptTemplates.length > 0) {
-      await handleAiGeneration(appId, appDir, outputFileName, mergedContent, setting, promptTemplates, resultOldDir, safeAppName);
+      await handleAiGeneration(appId, appDir, outputFileName, mergedContent, setting, promptTemplates, pastResultDirs, safeAppName);
     }
     await minifyJs(mergedContent, path.join(mergeDir, `${scope}_merge.min.js`));
   }
@@ -307,7 +320,7 @@ async function processMergeAndAi(
  */
 async function handleAiGeneration(
   appId: number, appDir: string, outputFileName: string, mergedContent: string,
-  setting: Setting, promptTemplates: string[], resultOldDir: string, safeAppName: string
+  setting: Setting, promptTemplates: string[], pastResultDirs: string[], safeAppName: string
 ) {
   const markerRegex = /#仕様書@\{(.+?)\}/g;
   const matches: MarkerMatch[] = [];
@@ -340,7 +353,8 @@ async function handleAiGeneration(
         await fs.writeFile(path.join(promptsDir, `${functionalName}.md`), fullPrompt, "utf-8");
 
         const resultFileName = `${functionalName}_result.md`;
-        const cached = await getCachedResult(path.join(resultOldDir, `${appId}_${safeAppName}`), `${functionalName}.md`, resultFileName, fullPrompt);
+        const appFolderName = `${appId}_${safeAppName}`;
+        const cached = await getCachedResult(pastResultDirs, appFolderName, `${functionalName}.md`, resultFileName, fullPrompt);
 
         if (cached) {
           await fs.writeFile(path.join(resultsDir, resultFileName), cached, "utf-8");

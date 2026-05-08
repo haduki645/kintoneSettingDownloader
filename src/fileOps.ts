@@ -3,19 +3,42 @@ import path from "path";
 import { minify } from "terser";
 
 /**
- * resultディレクトリを初期化・退避する
+ * タイムスタンプ付きのディレクトリ名を取得する
  */
-export async function initializeResultDirs(resultDir: string, resultOldDir: string) {
+export function getTimestampedDirName(): string {
+  const now = new Date();
+  const pad = (n: number) => n.toString().padStart(2, "0");
+  return `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+}
+
+/**
+ * 過去の結果ディレクトリ一覧を取得する（降順）
+ */
+export async function getPastResultDirs(baseDir: string): Promise<string[]> {
   try {
-    await fs.rm(resultOldDir, { recursive: true, force: true });
-    if (await fs.stat(resultDir).catch(() => null)) {
-      await fs.rename(resultDir, resultOldDir);
-      console.log(`[Info] 既存の result フォルダを result_old に退避しました。`);
-    }
-    await fs.mkdir(resultDir, { recursive: true });
+    const entries = await fs.readdir(baseDir, { withFileTypes: true });
+    return entries
+      .filter(e => e.isDirectory() && /^\d{8}_\d{6}$/.test(e.name))
+      .map(e => e.name)
+      .sort()
+      .reverse();
   } catch (err) {
-    console.error("resultディレクトリの初期化に失敗しました:", err);
-    throw err;
+    return [];
+  }
+}
+
+/**
+ * 古い結果ディレクトリを削除する
+ */
+export async function cleanupOldResults(baseDir: string, maxCacheCount: number) {
+  const dirs = await getPastResultDirs(baseDir);
+  if (dirs.length > maxCacheCount) {
+    const toDelete = dirs.slice(maxCacheCount);
+    for (const dirName of toDelete) {
+      const fullPath = path.join(baseDir, dirName);
+      await fs.rm(fullPath, { recursive: true, force: true });
+      console.log(`[Info] 古い結果フォルダを削除しました: ${dirName}`);
+    }
   }
 }
 

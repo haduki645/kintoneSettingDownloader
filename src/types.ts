@@ -9,6 +9,7 @@ export interface Setting {
   enableAi?: boolean;
   aiConfig?: AiConfig;
   workspaceConfig?: any;
+  maxCacheCount?: number;
 }
 
 export interface MarkerMatch {
