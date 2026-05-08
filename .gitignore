@@ -1,5 +1,4 @@
 dist/
 node_modules/
 result/
-result_old/
 .env

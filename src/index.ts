@@ -14,6 +14,7 @@ import {
   generateViewMd,
   generateAclMd,
   generateNotificationMd,
+  generateFormMd,
 } from "./mdGenerators";
 import {
   getTimestampedDirName,
@@ -146,6 +147,11 @@ async function processApp(
 
     // ルックアップ情報の抽出とMD生成
     await handleLookups(appId, appName, appDir, fieldsInfo, headers, appNameCache);
+
+    // フォームレイアウトの取得と保存
+    const layoutInfo = await fetchKintoneApi("/k/v1/app/form/layout.json", appId, headers);
+    await fs.writeFile(path.join(jsonDir, "layout.json"), JSON.stringify(layoutInfo, null, 2), "utf-8");
+    await fs.writeFile(path.join(appDir, "form.md"), generateFormMd(appId, fieldsInfo, layoutInfo), "utf-8");
 
     const viewsInfo = await fetchKintoneApi("/k/v1/app/views.json", appId, headers);
     await fs.writeFile(path.join(jsonDir, "views.json"), JSON.stringify(viewsInfo, null, 2), "utf-8");

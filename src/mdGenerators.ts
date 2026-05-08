@@ -236,3 +236,77 @@ export function generateNotificationMd(appId: number, notificationsGeneralInfo: 
   }
   return notifMdContent;
 }
+
+export function generateFormMd(appId: number, fieldsInfo: any, layoutInfo: any): string {
+  const properties = fieldsInfo.properties || {};
+  const layout = layoutInfo.layout || [];
+
+  // properties をフラットにする（テーブル内のフィールドも含む）
+  const flatProperties: Record<string, any> = {};
+  for (const [code, prop] of Object.entries(properties as Record<string, any>)) {
+    flatProperties[code] = prop;
+    if (prop.type === 'SUBTABLE' && prop.fields) {
+      for (const [subCode, subProp] of Object.entries(prop.fields)) {
+        flatProperties[subCode] = subProp;
+      }
+    }
+  }
+
+  let formMdContent = `# [フォーム設定 (アプリID: ${appId})](${KINTONE_BASE_URL}/k/${appId}/)\n\n`;
+  const style = `<style>\n` +
+    `  table { border-collapse: collapse; width: 100%; font-size: 14px; margin-bottom: 20px; }\n` +
+    `  th, td { border: 1px solid #ddd; padding: 12px 8px; text-align: left; vertical-align: middle; }\n` +
+    `  th { background-color: #f4f5f7; color: #333; font-weight: bold; border-bottom: 2px solid #ccc; white-space: nowrap; }\n` +
+    `  td { background-color: #fff; }\n` +
+    `  tbody tr:hover td { background-color: #f9fafb; }\n` +
+    `</style>\n\n`;
+  formMdContent += style;
+
+  const renderFields = (fields: any[]) => {
+    let html = `<table>\n  <thead>\n    <tr>\n      <th>フィールド名</th>\n      <th>フィールドコード</th>\n      <th>タイプ</th>\n      <th>必須</th>\n    </tr>\n  </thead>\n  <tbody>\n`;
+    for (const field of fields) {
+      if (field.type === 'HR') {
+        html += `    <tr>\n      <td>(横線)</td>\n      <td>-</td>\n      <td>${field.type}</td>\n      <td>-</td>\n    </tr>\n`;
+        continue;
+      }
+      if (field.type === 'LABEL') {
+        const labelText = field.label ? field.label.replace(/<[^>]*>?/gm, '') : '(ラベル)';
+        html += `    <tr>\n      <td>${labelText}</td>\n      <td>-</td>\n      <td>${field.type}</td>\n      <td>-</td>\n    </tr>\n`;
+        continue;
+      }
+      if (field.type === 'SPACER') {
+        html += `    <tr>\n      <td>(スペース: ${field.elementId || 'IDなし'})</td>\n      <td>-</td>\n      <td>${field.type}</td>\n      <td>-</td>\n    </tr>\n`;
+        continue;
+      }
+
+      const prop = flatProperties[field.code];
+      if (prop) {
+        html += `    <tr>\n      <td>${prop.label || '設定なし'}</td>\n      <td>${field.code}</td>\n      <td>${prop.type}</td>\n      <td>${prop.required ? '○' : '-'}</td>\n    </tr>\n`;
+      } else {
+        html += `    <tr>\n      <td>不明</td>\n      <td>${field.code}</td>\n      <td>${field.type}</td>\n      <td>-</td>\n    </tr>\n`;
+      }
+    }
+    html += `  </tbody>\n</table>\n`;
+    return html;
+  };
+
+  for (const section of layout) {
+    if (section.type === 'GROUP') {
+      const groupProp = properties[section.code];
+      const groupLabel = groupProp ? groupProp.label : section.code;
+      formMdContent += `## グループ: ${groupLabel}\n\n`;
+      for (const row of section.layout) {
+        formMdContent += renderFields(row.fields);
+      }
+    } else if (section.type === 'ROW') {
+      formMdContent += renderFields(section.fields);
+    } else if (section.type === 'SUBTABLE') {
+      const tableProp = properties[section.code];
+      const tableLabel = tableProp ? tableProp.label : section.code;
+      formMdContent += `## テーブル: ${tableLabel}\n\n`;
+      formMdContent += renderFields(section.fields);
+    }
+  }
+
+  return formMdContent;
+}
