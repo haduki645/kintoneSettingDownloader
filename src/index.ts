@@ -38,13 +38,28 @@ async function main() {
     return;
   }
 
-  // prompt.md の読み込み
-  const promptTemplatePath = path.join(process.cwd(), "prompt.md");
-  let promptTemplate = "";
+  // プロンプトテンプレートの読み込み
+  const promptTemplates: string[] = [];
+  const promptTemplatesDir = path.join(process.cwd(), "prompt_templates");
   try {
-    promptTemplate = await fs.readFile(promptTemplatePath, "utf-8");
+    const files = await fs.readdir(promptTemplatesDir);
+    const mdFiles = files.filter(f => f.endsWith(".md")).sort();
+    for (const f of mdFiles) {
+      const content = await fs.readFile(path.join(promptTemplatesDir, f), "utf-8");
+      promptTemplates.push(content);
+    }
   } catch (err) {
-    console.warn("prompt.md が見つからないため、プロンプト生成はスキップされます。");
+    // フォルダがない場合は従来の prompt.md を使用
+  }
+
+  if (promptTemplates.length === 0) {
+    const promptTemplatePath = path.join(process.cwd(), "prompt.md");
+    try {
+      const content = await fs.readFile(promptTemplatePath, "utf-8");
+      promptTemplates.push(content);
+    } catch (err) {
+      console.warn("プロンプトテンプレートが見つからないため、プロンプト生成はスキップされます。");
+    }
   }
 
   // API呼び出し用のヘッダーを取得
@@ -680,37 +695,69 @@ async function main() {
               // JSの場合はプロンプト生成とミニファイ版作成
               if (type === "js") {
                 // プロンプト生成の実行
-                if (promptTemplate) {
+                if (promptTemplates.length > 0) {
                   const markerRegex = /#仕様書@\{(.+?)\}/g;
+                  const matches: { functionalName: string; marker: string }[] = [];
                   let match;
                   while ((match = markerRegex.exec(mergedContent)) !== null) {
-                    const functionalName = match[1];
-                    const marker = match[0];
-                    const promptFileName = `${functionalName}.md`;
+                    matches.push({ functionalName: match[1], marker: match[0] });
+                  }
+
+                  if (matches.length > 0) {
                     const promptsDir = path.join(appDir, "prompts");
                     const promptsResultsDir = path.join(appDir, "prompts_results");
                     await fs.mkdir(promptsDir, { recursive: true });
                     await fs.mkdir(promptsResultsDir, { recursive: true });
 
-                    const finalPromptContent = promptTemplate
-                      .split("{{fileName}}").join(outputFileName)
-                      .split("{{marker}}").join(marker)
-                      .split("{{functionalName}}").join(functionalName)
-                      .split("{{content}}").join(mergedContent);
-
-                    await fs.writeFile(path.join(promptsDir, promptFileName), finalPromptContent, "utf-8");
-                    console.log(`  [OK] プロンプトファイルを作成しました: prompts/${promptFileName}`);
-
+                    let aiMessages: any[] = [];
                     if (enableAi) {
-                      console.time('生成時間')
-                      console.log(`  [AI] ${functionalName} の回答を生成中...`);
-                      const aiResult = await callAiApi(finalPromptContent, aiConfig);
-                      const resultFileName = `${functionalName}_result.md`;
-                      await fs.writeFile(path.join(promptsResultsDir, resultFileName), aiResult, "utf-8");
-                      console.timeEnd('生成時間')
-                      console.log(`  [OK] AIの結果を保存しました: prompts_results/${resultFileName}`);
+                      aiMessages.push({
+                        role: "user",
+                        content: `以下のJavaScriptコードを解析対象として読み込んでください。以降のメッセージで、このコード内の特定の箇所についての設計書作成を個別に依頼します。\n\n\`\`\`javascript\n${mergedContent}\n\`\`\``
+                      });
+                      console.log(`  [AI] 解析対象のコード（${outputFileName}）を送信中...`);
+                      const firstResponse = await callAiApi(aiMessages, aiConfig);
+                      aiMessages.push({ role: "assistant", content: firstResponse });
                     }
 
+                    for (const { functionalName, marker } of matches) {
+                      const promptFileName = `${functionalName}.md`;
+
+                      // ディスク保存用の全プロンプト結合
+                      const fullPromptContent = promptTemplates.map(template =>
+                        template
+                          .split("{{fileName}}").join(outputFileName)
+                          .split("{{marker}}").join(marker)
+                          .split("{{functionalName}}").join(functionalName)
+                          .split("{{content}}").join(mergedContent)
+                      ).join("\n\n---\n\n");
+
+                      await fs.writeFile(path.join(promptsDir, promptFileName), fullPromptContent, "utf-8");
+                      console.log(`  [OK] プロンプトファイルを作成しました: prompts/${promptFileName}`);
+
+                      if (enableAi) {
+                        let combinedAiResult = "";
+                        for (let i = 0; i < promptTemplates.length; i++) {
+                          const template = promptTemplates[i];
+                          const specificPrompt = template
+                            .split("{{fileName}}").join(outputFileName)
+                            .split("{{marker}}").join(marker)
+                            .split("{{functionalName}}").join(functionalName)
+                            .split("{{content}}").join("提示済みのコードを参照してください。");
+
+                          aiMessages.push({ role: "user", content: specificPrompt });
+
+                          console.log(`  [AI] ${functionalName} の回答を生成中 (${i + 1}/${promptTemplates.length})...`);
+                          const aiResult = await callAiApi(aiMessages, aiConfig);
+                          aiMessages.push({ role: "assistant", content: aiResult });
+                          combinedAiResult += aiResult + "\n\n";
+                        }
+
+                        const resultFileName = `${functionalName}_result.md`;
+                        await fs.writeFile(path.join(promptsResultsDir, resultFileName), combinedAiResult, "utf-8");
+                        console.log(`  [OK] AIの結果を保存しました: prompts_results/${resultFileName}`);
+                      }
+                    }
                   }
                 }
 
@@ -753,11 +800,11 @@ async function main() {
 }
 
 // AI API呼び出し用のヘルパー関数
-async function callAiApi(prompt: string, config: { baseUrl: string; model: string }) {
+async function callAiApi(messages: any[], config: { baseUrl: string; model: string }) {
   try {
     const response = await axios.post(`${config.baseUrl}/chat/completions`, {
       model: config.model,
-      messages: [{ role: "user", content: prompt }],
+      messages: messages,
       temperature: 0.7,
     });
     return response.data.choices[0].message.content;
