@@ -1,7 +1,7 @@
 import { KINTONE_BASE_URL } from "./kintone";
 
 export function generateLookupMd(appName: string, appId: number, rows: string[]): string {
-  return `# ルックアップ関係一覧\n\n## [${appName} (アプリID: ${appId})](${KINTONE_BASE_URL}/k/${appId}/)\n\n` +
+  return `# ルックアップ関係一覧\n\n## [${appName} (アプリID: ${appId})](${KINTONE_BASE_URL}/k/admin/app/flow?app=${appId}#section=form)\n\n` +
     `<style>\n` +
     `  table { border-collapse: collapse; width: 100%; font-size: 14px; }\n` +
     `  th, td { border: 1px solid #ddd; padding: 12px 8px; text-align: left; vertical-align: middle; }\n` +
@@ -26,7 +26,7 @@ export function generateLookupMd(appName: string, appId: number, rows: string[])
 }
 
 export function generateViewMd(appId: number, viewsInfo: any): string {
-  let viewMdContent = `# [一覧設定 (アプリID: ${appId})](${KINTONE_BASE_URL}/k/${appId}/)\n\n`;
+  let viewMdContent = `# [一覧設定 (アプリID: ${appId})](${KINTONE_BASE_URL}/k/admin/app/flow?app=${appId}#section=views)\n\n`;
   const style = `<style>\n` +
     `  table { border-collapse: collapse; width: 100%; font-size: 14px; }\n` +
     `  th, td { border: 1px solid #ddd; padding: 12px 8px; text-align: left; vertical-align: middle; }\n` +
@@ -67,7 +67,7 @@ export function generateAclMd(appId: number, appAclInfo: any, recordAclInfo: any
   const recordRights = recordAclInfo.rights || [];
   const fieldRights = fieldAclInfo.rights || [];
 
-  let aclMdContent = `# [アクセス権設定 (アプリID: ${appId})](${KINTONE_BASE_URL}/k/${appId}/)\n\n`;
+  let aclMdContent = `# [アクセス権設定 (アプリID: ${appId})](${KINTONE_BASE_URL}/k/admin/app/flow?app=${appId}#section=permissions)\n\n`;
   const style = `<style>\n` +
     `  table { border-collapse: collapse; width: 100%; font-size: 14px; margin-bottom: 20px; }\n` +
     `  th, td { border: 1px solid #ddd; padding: 12px 8px; text-align: left; vertical-align: middle; }\n` +
@@ -156,7 +156,7 @@ export function generateNotificationMd(appId: number, notificationsGeneralInfo: 
   const perRecordNotifs = notificationsPerRecordInfo.perRecordNotifications || [];
   const reminderNotifs = notificationsReminderInfo.reminderNotifications || [];
 
-  let notifMdContent = `# [通知設定 (アプリID: ${appId})](${KINTONE_BASE_URL}/k/${appId}/)\n\n`;
+  let notifMdContent = `# [通知設定 (アプリID: ${appId})](${KINTONE_BASE_URL}/k/admin/app/flow?app=${appId}#section=notifications)\n\n`;
   notifMdContent += `<style>\n` +
     `  table { border-collapse: collapse; width: 100%; font-size: 14px; margin-bottom: 20px; }\n` +
     `  th, td { border: 1px solid #ddd; padding: 12px 8px; text-align: left; vertical-align: middle; }\n` +
@@ -252,7 +252,7 @@ export function generateFormMd(appId: number, fieldsInfo: any, layoutInfo: any):
     }
   }
 
-  let formMdContent = `# [フォーム設定 (アプリID: ${appId})](${KINTONE_BASE_URL}/k/${appId}/)\n\n`;
+  let formMdContent = `# [フォーム設定 (アプリID: ${appId})](${KINTONE_BASE_URL}/k/admin/app/flow?app=${appId}#section=form)\n\n`;
   const style = `<style>\n` +
     `  table { border-collapse: collapse; width: 100%; font-size: 14px; margin-bottom: 20px; }\n` +
     `  th, td { border: 1px solid #ddd; padding: 12px 8px; text-align: left; vertical-align: middle; }\n` +
@@ -262,20 +262,25 @@ export function generateFormMd(appId: number, fieldsInfo: any, layoutInfo: any):
     `</style>\n\n`;
   formMdContent += style;
 
-  const renderFields = (fields: any[]) => {
-    let html = `<table>\n  <thead>\n    <tr>\n      <th>フィールド名</th>\n      <th>フィールドコード</th>\n      <th>タイプ</th>\n      <th>必須</th>\n      <th>設定詳細</th>\n    </tr>\n  </thead>\n  <tbody>\n`;
+  formMdContent += `<table>\n  <thead>\n    <tr>\n      <th>場所</th>\n      <th>フィールド名</th>\n      <th>フィールドコード</th>\n      <th>タイプ</th>\n      <th>必須</th>\n      <th>設定詳細</th>\n    </tr>\n  </thead>\n  <tbody>\n`;
+
+  const renderFieldRows = (fields: any[], location: string) => {
+    let html = "";
     for (const field of fields) {
+      html += `    <tr>\n`;
+      html += `      <td>${location}</td>\n`;
+
       if (field.type === 'HR') {
-        html += `    <tr>\n      <td>(横線)</td>\n      <td>-</td>\n      <td>${field.type}</td>\n      <td>-</td>\n      <td>-</td>\n    </tr>\n`;
+        html += `      <td>(横線)</td>\n      <td>-</td>\n      <td>${field.type}</td>\n      <td>-</td>\n      <td>-</td>\n    </tr>\n`;
         continue;
       }
       if (field.type === 'LABEL') {
         const labelText = field.label ? field.label.replace(/<[^>]*>?/gm, '') : '(ラベル)';
-        html += `    <tr>\n      <td>${labelText}</td>\n      <td>-</td>\n      <td>${field.type}</td>\n      <td>-</td>\n      <td>-</td>\n    </tr>\n`;
+        html += `      <td>${labelText}</td>\n      <td>-</td>\n      <td>${field.type}</td>\n      <td>-</td>\n      <td>-</td>\n    </tr>\n`;
         continue;
       }
       if (field.type === 'SPACER') {
-        html += `    <tr>\n      <td>(スペース: ${field.elementId || 'IDなし'})</td>\n      <td>-</td>\n      <td>${field.type}</td>\n      <td>-</td>\n      <td>-</td>\n    </tr>\n`;
+        html += `      <td>(スペース: ${field.elementId || 'IDなし'})</td>\n      <td>-</td>\n      <td>${field.type}</td>\n      <td>-</td>\n      <td>-</td>\n    </tr>\n`;
         continue;
       }
 
@@ -300,12 +305,11 @@ export function generateFormMd(appId: number, fieldsInfo: any, layoutInfo: any):
       const details = detailParts.join('<br>') || '-';
 
       if (prop) {
-        html += `    <tr>\n      <td>${prop.label || '設定なし'}</td>\n      <td>${field.code}</td>\n      <td>${prop.type}</td>\n      <td>${prop.required ? '○' : '-'}</td>\n      <td>${details}</td>\n    </tr>\n`;
+        html += `      <td>${prop.label || '設定なし'}</td>\n      <td>${field.code}</td>\n      <td>${prop.type}</td>\n      <td>${prop.required ? '○' : '-'}</td>\n      <td>${details}</td>\n    </tr>\n`;
       } else {
-        html += `    <tr>\n      <td>不明</td>\n      <td>${field.code}</td>\n      <td>${field.type}</td>\n      <td>-</td>\n      <td>${details}</td>\n    </tr>\n`;
+        html += `      <td>不明</td>\n      <td>${field.code}</td>\n      <td>${field.type}</td>\n      <td>-</td>\n      <td>${details}</td>\n    </tr>\n`;
       }
     }
-    html += `  </tbody>\n</table>\n`;
     return html;
   };
 
@@ -313,19 +317,20 @@ export function generateFormMd(appId: number, fieldsInfo: any, layoutInfo: any):
     if (section.type === 'GROUP') {
       const groupProp = properties[section.code];
       const groupLabel = groupProp ? groupProp.label : section.code;
-      formMdContent += `## グループ: ${groupLabel}\n\n`;
       for (const row of section.layout) {
-        formMdContent += renderFields(row.fields);
+        formMdContent += renderFieldRows(row.fields, `グループ: ${groupLabel}`);
       }
     } else if (section.type === 'ROW') {
-      formMdContent += renderFields(section.fields);
+      formMdContent += renderFieldRows(section.fields, `フォーム`);
     } else if (section.type === 'SUBTABLE') {
       const tableProp = properties[section.code];
       const tableLabel = tableProp ? tableProp.label : section.code;
-      formMdContent += `## テーブル: ${tableLabel}\n\n`;
-      formMdContent += renderFields(section.fields);
+      formMdContent += renderFieldRows(section.fields, `テーブル: ${tableLabel}`);
     }
   }
 
+  formMdContent += `  </tbody>\n</table>\n`;
+
   return formMdContent;
 }
+

@@ -299,7 +299,7 @@ async function processMergeAndAi(
   const files = allFilePaths.filter(p => !exclude.includes(path.basename(p))).sort();
   const excluded = allFilePaths.filter(p => exclude.includes(path.basename(p))).sort();
 
-  let mergedContent = `/*\n アプリ名: ${appName}\n アプリURL: ${KINTONE_BASE_URL}/k/${appId}/\n マージ一覧:\n`;
+  let mergedContent = `/*\n アプリ名: ${appName}\n 設定URL: ${KINTONE_BASE_URL}/k/admin/app/flow?app=${appId}\n マージ一覧:\n`;
   files.forEach(f => mergedContent += ` - ${path.basename(f)}\n`);
   mergedContent += ` 除外一覧:\n${excluded.length ? excluded.map(f => ` - ${path.basename(f)}`).join("\n") : " - なし"}\n*/\n\n`;
 
