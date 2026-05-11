@@ -1,6 +1,7 @@
 export interface AiConfig {
   baseUrl: string;
   model: string;
+  lmStudioPath?: string;
 }
 
 export interface Setting {
