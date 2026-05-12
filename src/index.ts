@@ -21,11 +21,13 @@ import {
   getPastResultDirs,
   cleanupOldResults,
   minifyJs,
+  writeErrorLog,
   getReadmeContent,
 } from "./fileOps";
 
 // メイン処理
 async function main() {
+  const isResumeMode = process.argv.length > 2;
   const settingPath = path.join(process.cwd(), "setting.json");
   let setting: Setting;
 
@@ -37,6 +39,7 @@ async function main() {
     }
   } catch (err) {
     console.error("setting.json の読み取りに失敗しました:", err);
+    // resultDir がまだ作られていないので、ここでは console.error のみ
     return;
   }
 
@@ -47,6 +50,18 @@ async function main() {
   // 過去の結果ディレクトリを取得
   const maxCacheCount = setting.maxCacheCount || 5;
   const pastDirsNames = await getPastResultDirs(baseResultDir);
+
+  if (isResumeMode) {
+    if (pastDirsNames.length === 0) {
+      console.error("再開対象となる過去の結果ディレクトリが見つかりません。");
+      return;
+    }
+    const latestDir = path.join(baseResultDir, pastDirsNames[0]);
+    await resumeMain(latestDir, setting, promptTemplates);
+    console.log(`\n=== 再開処理が完了しました ===`);
+    return;
+  }
+
   const pastResultDirs = pastDirsNames.slice(0, maxCacheCount).map(name => path.join(baseResultDir, name));
 
   // 今回の結果ディレクトリを作成
@@ -114,6 +129,42 @@ function openWorkspace(workspacePath: string) {
   exec(`code "${workspacePath}"`, (err) => {
     if (err) exec(`start "" "${workspacePath}"`);
   });
+}
+
+/**
+ * 既存の結果フォルダに対してAI処理のみを再開する
+ */
+async function resumeMain(resultDir: string, setting: Setting, promptTemplates: string[]) {
+  console.log(`=== 既存の結果ディレクトリ (${path.basename(resultDir)}) を対象にAI処理を再開します ===`);
+  const baseResultDir = path.dirname(resultDir);
+  const entries = await fs.readdir(resultDir, { withFileTypes: true });
+  const appDirs = entries.filter(e => e.isDirectory() && /^\d+_/.test(e.name)).map(e => e.name);
+
+  // 今回のディレクトリを除いた過去のディレクトリをキャッシュ対象にする
+  const pastDirsNames = await getPastResultDirs(baseResultDir);
+  const pastResultDirs = pastDirsNames
+    .filter(name => name !== path.basename(resultDir))
+    .slice(0, setting.maxCacheCount || 5)
+    .map(name => path.join(baseResultDir, name));
+
+  for (const appDirName of appDirs) {
+    const appId = parseInt(appDirName.split("_")[0]);
+    const appDir = path.join(resultDir, appDirName);
+    const safeAppName = appDirName.substring(appDirName.indexOf("_") + 1);
+    
+    const mergeDir = path.join(appDir, "mergeFiles");
+    try {
+      const files = await fs.readdir(mergeDir);
+      const jsFiles = files.filter(f => f.endsWith(".js") && !f.endsWith(".min.js"));
+      for (const jsFile of jsFiles) {
+        console.log(`[Resume] アプリ: ${appDirName}, ファイル: ${jsFile}`);
+        const mergedContent = await fs.readFile(path.join(mergeDir, jsFile), "utf-8");
+        await handleAiGeneration(appId, appDir, jsFile, mergedContent, setting, promptTemplates, pastResultDirs, safeAppName);
+      }
+    } catch (e) {
+      // mergeFiles がない場合はスキップ
+    }
+  }
 }
 
 /**
@@ -196,6 +247,7 @@ async function processApp(
     console.log(`=== アプリID: ${appId} の処理が完了しました ===\n`);
   } catch (error) {
     console.error(`=== アプリID: ${appId} はエラーが発生したためスキップしました ===\n`, error);
+    await writeErrorLog(resultDir, `アプリID: ${appId} の処理中にエラーが発生しました。`, error);
   }
 }
 
@@ -223,6 +275,7 @@ async function handleLookups(appId: number, appName: string, appDir: string, fie
             } catch (e) {
               relatedAppName = "取得不可";
               appNameCache[relatedAppId] = relatedAppName;
+              await writeErrorLog(appDir, `ルックアップ先アプリ情報 (ID: ${relatedAppId}) の取得に失敗しました。`, e);
             }
           }
         }
@@ -277,7 +330,9 @@ async function handleCustomizeFiles(
             const data = await downloadKintoneFile(item.file.fileKey, headers);
             await fs.writeFile(targetPath, data);
             filesToMerge.push(targetPath);
-          } catch (e) {}
+          } catch (e) {
+            await writeErrorLog(appDir, `ファイルのダウンロードまたは保存に失敗しました: ${item.file.name}`, e);
+          }
         }
       }
 
@@ -359,6 +414,17 @@ async function handleAiGeneration(
         await fs.writeFile(path.join(promptsDir, `${functionalName}.md`), fullPrompt, "utf-8");
 
         const resultFileName = `${functionalName}_result.md`;
+        const resultFilePath = path.join(resultsDir, resultFileName);
+
+        // すでに存在する場合はスキップ
+        try {
+          await fs.access(resultFilePath);
+          console.log(`  [Skip] ${functionalName} の回答は既に存在します。`);
+          continue;
+        } catch (e) {
+          // 存在しない場合は続行
+        }
+
         const appFolderName = `${appId}_${safeAppName}`;
         const cached = await getCachedResult(pastResultDirs, appFolderName, `${functionalName}.md`, resultFileName, fullPrompt);
 

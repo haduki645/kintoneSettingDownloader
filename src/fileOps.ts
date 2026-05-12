@@ -59,6 +59,28 @@ export async function minifyJs(content: string, outputPath: string) {
 }
 
 /**
+ * エラーログをファイルに書き出す
+ */
+export async function writeErrorLog(resultDir: string, message: string, error?: any) {
+  const logPath = path.join(resultDir, "error.log");
+  const now = new Date().toLocaleString("ja-JP");
+  let logContent = `[${now}] ${message}\n`;
+  if (error) {
+    if (error instanceof Error) {
+      logContent += `${error.stack || error.message}\n`;
+    } else {
+      logContent += `${JSON.stringify(error, null, 2)}\n`;
+    }
+  }
+  logContent += "--------------------------------------------------\n";
+  try {
+    await fs.appendFile(logPath, logContent, "utf-8");
+  } catch (err) {
+    console.error("エラーログの書き込みに失敗しました:", err);
+  }
+}
+
+/**
  * readme.mdの内容を取得
  */
 export function getReadmeContent(): string {
@@ -86,5 +108,6 @@ export function getReadmeContent(): string {
 - \`mergeFiles/\`: マージおよびミニファイされたJavaScript/CSSファイルが保存されるフォルダ
 - \`prompts/\`: 仕様書マーカーから生成された AI へのプロンプトファイルが保存されるフォルダ
 - \`prompts_results/\`: AI によって生成された回答（仕様書）が保存されるフォルダ
+- \`error.log\`: 実行中にエラーが発生した場合に出力されるログファイル
 `;
 }

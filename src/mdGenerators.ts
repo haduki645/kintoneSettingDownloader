@@ -41,6 +41,7 @@ export function generateViewMd(appId: number, viewsInfo: any): string {
   viewMdContent += `      <th>一覧名</th>\n`;
   viewMdContent += `      <th>表示形式</th>\n`;
   viewMdContent += `      <th>絞り込み条件</th>\n`;
+  viewMdContent += `      <th>並び替え条件</th>\n`;
   viewMdContent += `    </tr>\n`;
   viewMdContent += `  </thead>\n`;
   viewMdContent += `  <tbody>\n`;
@@ -50,10 +51,12 @@ export function generateViewMd(appId: number, viewsInfo: any): string {
   for (const view of viewsArray) {
     const viewUrl = `${KINTONE_BASE_URL}/k/${appId}/?view=${view.id}`;
     const filterCond = view.filterCond ? `\`${view.filterCond}\`` : "なし";
+    const sort = view.sort ? `\`${view.sort}\`` : "なし";
     viewMdContent += `    <tr>\n`;
     viewMdContent += `      <td><a href="${viewUrl}" target="_blank">${view.name}</a></td>\n`;
     viewMdContent += `      <td>${view.type}</td>\n`;
     viewMdContent += `      <td>${filterCond}</td>\n`;
+    viewMdContent += `      <td>${sort}</td>\n`;
     viewMdContent += `    </tr>\n`;
   }
 
@@ -321,7 +324,7 @@ export function generateFormMd(appId: number, fieldsInfo: any, layoutInfo: any):
         formMdContent += renderFieldRows(row.fields, `グループ: ${groupLabel}`);
       }
     } else if (section.type === 'ROW') {
-      formMdContent += renderFieldRows(section.fields, `フォーム`);
+      formMdContent += renderFieldRows(section.fields, ``);
     } else if (section.type === 'SUBTABLE') {
       const tableProp = properties[section.code];
       const tableLabel = tableProp ? tableProp.label : section.code;
