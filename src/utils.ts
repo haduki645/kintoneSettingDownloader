@@ -48,3 +48,60 @@ export const formatTimestamp = (date: Date): string => {
  */
 export const errorToString = (error: any): string => 
   error instanceof Error ? (error.stack || error.message) : JSON.stringify(error, null, 2);
+
+/**
+ * 同期処理を安全に実行する
+ */
+export const safeRun = <T>(callbacks: {
+  tryCallback: () => T;
+  catchCallback?: (error: any) => T;
+  finallyCallback?: () => void;
+}): T => {
+  const { tryCallback, catchCallback, finallyCallback } = callbacks;
+  try {
+    return tryCallback();
+  } catch (error) {
+    if (catchCallback) return catchCallback(error);
+    throw error;
+  } finally {
+    if (finallyCallback) finallyCallback();
+  }
+};
+
+/**
+ * 非同期処理を安全に実行する
+ */
+export const safeRunAsync = async <T>(callbacks: {
+  tryCallback: () => Promise<T>;
+  catchCallback?: (error: any) => Promise<T>;
+  finallyCallback?: () => Promise<void>;
+}): Promise<T> => {
+  const { tryCallback, catchCallback, finallyCallback } = callbacks;
+  try {
+    return await tryCallback();
+  } catch (error) {
+    if (catchCallback) return await catchCallback(error);
+    throw error;
+  } finally {
+    if (finallyCallback) await finallyCallback();
+  }
+};
+
+/**
+ * 非同期ジェネレーターを安全に実行する
+ */
+export const safeRunAsyncGenerator = async function* <T, TReturn = any, TNext = void>(callbacks: {
+  tryCallback: () => AsyncGenerator<T, TReturn, TNext>;
+  catchCallback?: (error: any) => AsyncGenerator<T, TReturn, TNext>;
+  finallyCallback?: () => Promise<void>;
+}): AsyncGenerator<T, TReturn, TNext> {
+  const { tryCallback, catchCallback, finallyCallback } = callbacks;
+  try {
+    return yield* tryCallback();
+  } catch (error) {
+    if (catchCallback) return yield* catchCallback(error);
+    throw error;
+  } finally {
+    if (finallyCallback) await finallyCallback();
+  }
+};

@@ -1,7 +1,7 @@
 import fs from "fs/promises";
 import path from "path";
 import { minify } from "terser";
-import { formatTimestamp, errorToString } from "./utils";
+import { formatTimestamp, errorToString, safeRunAsync } from "./utils";
 
 /**
  * タイムスタンプ付きのディレクトリ名を取得する
@@ -14,16 +14,19 @@ export function getTimestampedDirName(): string {
  * 過去の結果ディレクトリ一覧を取得する（降順）
  */
 export async function getPastResultDirs(baseDir: string): Promise<string[]> {
-  try {
-    const entries = await fs.readdir(baseDir, { withFileTypes: true });
-    return entries
-      .filter(e => e.isDirectory() && /^\d{8}_\d{6}$/.test(e.name))
-      .map(e => e.name)
-      .sort()
-      .reverse();
-  } catch (err) {
-    return [];
-  }
+  return await safeRunAsync({
+    tryCallback: async () => {
+      const entries = await fs.readdir(baseDir, { withFileTypes: true });
+      return entries
+        .filter(e => e.isDirectory() && /^\d{8}_\d{6}$/.test(e.name))
+        .map(e => e.name)
+        .sort()
+        .reverse();
+    },
+    catchCallback: async () => {
+      return [];
+    }
+  });
 }
 
 /**
@@ -43,16 +46,20 @@ export async function cleanupOldResults(baseDir: string, maxCacheCount: number) 
  * JSファイルをミニファイする
  */
 export async function minifyJs(content: string, outputPath: string) {
-  try {
-    const { code } = await minify(content);
-    if (code) {
-      await fs.writeFile(outputPath, code, "utf-8");
-      return true;
+  return await safeRunAsync({
+    tryCallback: async () => {
+      const { code } = await minify(content);
+      if (code) {
+        await fs.writeFile(outputPath, code, "utf-8");
+        return true;
+      }
+      return false;
+    },
+    catchCallback: async (minifyErr) => {
+      console.error(`  [Error] ミニファイに失敗しました: ${path.basename(outputPath)}`, minifyErr);
+      return false;
     }
-  } catch (minifyErr) {
-    console.error(`  [Error] ミニファイに失敗しました: ${path.basename(outputPath)}`, minifyErr);
-  }
-  return false;
+  });
 }
 
 /**
@@ -68,11 +75,14 @@ export async function writeErrorLog(resultDir: string, message: string, error?: 
     "--------------------------------------------------\n"
   ].filter(Boolean).join("\n");
 
-  try {
-    await fs.appendFile(logPath, logContent, "utf-8");
-  } catch (err) {
-    console.error("エラーログの書き込みに失敗しました:", err);
-  }
+  await safeRunAsync({
+    tryCallback: async () => {
+      await fs.appendFile(logPath, logContent, "utf-8");
+    },
+    catchCallback: async (err) => {
+      console.error("エラーログの書き込みに失敗しました:", err);
+    }
+  });
 }
 
 /**

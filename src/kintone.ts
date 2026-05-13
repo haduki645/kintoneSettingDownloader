@@ -1,5 +1,6 @@
 import axios from "axios";
 import * as dotenv from "dotenv";
+import { safeRunAsync } from "./utils";
 
 dotenv.config();
 
@@ -38,18 +39,21 @@ export async function fetchKintoneApi(
   const paramName = endpoint === "/k/v1/app.json" ? "id" : "app";
   const url = `${KINTONE_BASE_URL}${endpoint}?${paramName}=${appId}`;
   
-  try {
-    const { data } = await axios.get(url, { headers });
-    return data;
-  } catch (error: any) {
-    const { response, message } = error;
-    const errorDetail = response?.data || message;
-    console.error(
-      `[Error] APIリクエスト失敗 (${endpoint}, app: ${appId}):`,
-      errorDetail,
-    );
-    throw error;
-  }
+  return await safeRunAsync({
+    tryCallback: async () => {
+      const { data } = await axios.get(url, { headers });
+      return data;
+    },
+    catchCallback: async (error: any) => {
+      const { response, message } = error;
+      const errorDetail = response?.data || message;
+      console.error(
+        `[Error] APIリクエスト失敗 (${endpoint}, app: ${appId}):`,
+        errorDetail,
+      );
+      throw error;
+    }
+  });
 }
 
 /**
@@ -61,19 +65,22 @@ export async function downloadKintoneFile(
 ): Promise<Buffer> {
   const url = `${KINTONE_BASE_URL}/k/v1/file.json?fileKey=${fileKey}`;
   
-  try {
-    const { data } = await axios.get(url, {
-      headers,
-      responseType: "arraybuffer", // バイナリデータとして取得
-    });
-    return Buffer.from(data);
-  } catch (error: any) {
-    const { response, message } = error;
-    const errorDetail = response?.data || message;
-    console.error(
-      `[Error] ファイルダウンロード失敗 (fileKey: ${fileKey}):`,
-      errorDetail,
-    );
-    throw error;
-  }
+  return await safeRunAsync({
+    tryCallback: async () => {
+      const { data } = await axios.get(url, {
+        headers,
+        responseType: "arraybuffer", // バイナリデータとして取得
+      });
+      return Buffer.from(data);
+    },
+    catchCallback: async (error: any) => {
+      const { response, message } = error;
+      const errorDetail = response?.data || message;
+      console.error(
+        `[Error] ファイルダウンロード失敗 (fileKey: ${fileKey}):`,
+        errorDetail,
+      );
+      throw error;
+    }
+  });
 }

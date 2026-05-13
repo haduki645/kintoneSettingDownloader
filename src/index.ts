@@ -16,6 +16,7 @@ import {
   resumeMain,
   processApp,
 } from "./appProcessor";
+import { safeRunAsync } from "./utils";
 
 // メイン処理
 async function main() {
@@ -23,17 +24,23 @@ async function main() {
   const settingPath = path.join(process.cwd(), "setting.json");
   let setting: Setting;
 
-  try {
-    const settingContent = await fs.readFile(settingPath, "utf-8");
-    setting = JSON.parse(settingContent);
-    if (!Array.isArray(setting.appIds)) {
-      throw new Error("setting.json の appIds パラメータが配列ではありません。");
+  const result = await safeRunAsync({
+    tryCallback: async () => {
+      const settingContent = await fs.readFile(settingPath, "utf-8");
+      setting = JSON.parse(settingContent);
+      if (!Array.isArray(setting.appIds)) {
+        throw new Error("setting.json の appIds パラメータが配列ではありません。");
+      }
+      return { success: true, setting };
+    },
+    catchCallback: async (err) => {
+      console.error("setting.json の読み取りに失敗しました:", err);
+      return { success: false, setting: null as any };
     }
-  } catch (err) {
-    console.error("setting.json の読み取りに失敗しました:", err);
-    // resultDir がまだ作られていないので、ここでは console.error のみ
-    return;
-  }
+  });
+
+  if (!result.success) return;
+  setting = result.setting;
 
   const promptTemplates = await loadPromptTemplates();
   const headers = getAuthHeaders();
@@ -90,7 +97,7 @@ async function main() {
   // 古い結果を整理
   await cleanupOldResults(baseResultDir, maxCacheCount);
 
-  console.log(`\n=== すべての処理が完了しました ===`);
+  console.log(`\n=== すべてের処理が完了しました ===`);
 
   if (setting.workspaceConfig) {
     openWorkspace(path.join(resultDir, "result.code-workspace"));

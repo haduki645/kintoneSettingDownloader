@@ -21,6 +21,7 @@ import {
   minifyJs,
   writeErrorLog,
 } from "./fileOps";
+import { safeRunAsync } from "./utils";
 
 /**
  * プロンプトテンプレートの読み込み
@@ -28,26 +29,31 @@ import {
 export async function loadPromptTemplates(): Promise<PromptTemplate[]> {
   const promptTemplates: PromptTemplate[] = [];
   const promptTemplatesDir = path.join(process.cwd(), "prompt_templates");
-  try {
-    const files = await fs.readdir(promptTemplatesDir);
-    const templateFiles = files.filter(f => f.endsWith(".md") || f.endsWith(".txt")).sort();
-    const templates = await Promise.all(templateFiles.map(async f => ({
-      name: path.parse(f).name,
-      content: await fs.readFile(path.join(promptTemplatesDir, f), "utf-8")
-    })));
-    promptTemplates.push(...templates);
-  } catch (err) { }
+  await safeRunAsync({
+    tryCallback: async () => {
+      const files = await fs.readdir(promptTemplatesDir);
+      const templateFiles = files.filter(f => f.endsWith(".md") || f.endsWith(".txt")).sort();
+      const templates = await Promise.all(templateFiles.map(async f => ({
+        name: path.parse(f).name,
+        content: await fs.readFile(path.join(promptTemplatesDir, f), "utf-8")
+      })));
+      promptTemplates.push(...templates);
+    }
+  });
 
   if (promptTemplates.length === 0) {
     const promptTemplatePath = path.join(process.cwd(), "prompt.md");
-    try {
-      promptTemplates.push({
-        name: "prompt",
-        content: await fs.readFile(promptTemplatePath, "utf-8")
-      });
-    } catch (err) {
-      console.warn("プロンプトテンプレートが見つからないため、プロンプト生成はスキップされます。");
-    }
+    await safeRunAsync({
+      tryCallback: async () => {
+        promptTemplates.push({
+          name: "prompt",
+          content: await fs.readFile(promptTemplatePath, "utf-8")
+        });
+      },
+      catchCallback: async () => {
+        console.warn("プロンプトテンプレートが見つからないため、プロンプト生成はスキップされます。");
+      }
+    });
   }
   return promptTemplates;
 }
@@ -85,22 +91,22 @@ export async function resumeMain(resultDir: string, setting: Setting, promptTemp
     const safeAppName = appDirName.substring(appDirName.indexOf("_") + 1);
 
     const mergeDir = path.join(appDir, "mergeFiles");
-    try {
-      const files = await fs.readdir(mergeDir);
-      const jsFiles = files.filter(f => f.endsWith(".js") && !f.endsWith(".min.js"));
+    await safeRunAsync({
+      tryCallback: async () => {
+        const files = await fs.readdir(mergeDir);
+        const jsFiles = files.filter(f => f.endsWith(".js") && !f.endsWith(".min.js"));
 
-      await jsFiles.reduce(async (jsPromise, jsFile) => {
-        await jsPromise;
-        console.log(`[Resume] アプリ: ${appDirName}, ファイル: ${jsFile}`);
-        const mergedContent = await fs.readFile(path.join(mergeDir, jsFile), "utf-8");
-        const aiGen = handleAiGeneration(appId, appDir, jsFile, mergedContent, setting, promptTemplates, pastResultDirs, safeAppName);
-        for await (const status of aiGen) {
-          // AI処理の完了を待機
-        }
-      }, Promise.resolve());
-    } catch (e) {
-      // mergeFiles がない場合はスキップ
-    }
+        await jsFiles.reduce(async (jsPromise, jsFile) => {
+          await jsPromise;
+          console.log(`[Resume] アプリ: ${appDirName}, ファイル: ${jsFile}`);
+          const mergedContent = await fs.readFile(path.join(mergeDir, jsFile), "utf-8");
+          const aiGen = handleAiGeneration(appId, appDir, jsFile, mergedContent, setting, promptTemplates, pastResultDirs, safeAppName);
+          for await (const status of aiGen) {
+            // AI処理の完了を待機
+          }
+        }, Promise.resolve());
+      }
+    });
   }, Promise.resolve());
 }
 
@@ -118,84 +124,87 @@ export async function processApp(
   skipAi = false
 ) {
   console.log(`=== アプリID: ${appId} の処理を開始します ===`);
-  try {
-    // 1. まず基本情報を取得（ディレクトリ名やルックアップ処理に必要）
-    const [appInfo, fieldsInfo, customizeInfo] = await Promise.all([
-      fetchKintoneApi("/k/v1/app.json", appId, headers),
-      fetchKintoneApi("/k/v1/app/form/fields.json", appId, headers),
-      fetchKintoneApi("/k/v1/app/customize.json", appId, headers),
-    ]);
-
-    const { name: appName } = appInfo;
-    if (!appName) throw new Error("アプリ名が取得できませんでした。");
-
-    const safeAppName = toSafeFileName(appName);
-    const appDir = path.join(resultDir, `${appId}_${safeAppName}`);
-    const jsonDir = path.join(appDir, "json");
-    await fs.mkdir(jsonDir, { recursive: true });
-
-    // 2. AI処理（カスタマイズファイルのDL含む）と、その他のメタデータDLを並列実行
-    const aiTask = handleCustomizeFiles(appId, appName, appDir, customizeInfo, headers, setting, promptTemplates, pastResultDirs, safeAppName, skipAi);
-
-    const metaTask = (async () => {
-      // JSONの書き出し
-      await Promise.all([
-        fs.writeFile(path.join(jsonDir, "app.json"), JSON.stringify(appInfo, null, 2), "utf-8"),
-        fs.writeFile(path.join(jsonDir, "fields.json"), JSON.stringify(fieldsInfo, null, 2), "utf-8"),
-        fs.writeFile(path.join(jsonDir, "customize.json"), JSON.stringify(customizeInfo, null, 2), "utf-8"),
+  await safeRunAsync({
+    tryCallback: async () => {
+      // 1. まず基本情報を取得（ディレクトリ名やルックアップ処理に必要）
+      const [appInfo, fieldsInfo, customizeInfo] = await Promise.all([
+        fetchKintoneApi("/k/v1/app.json", appId, headers),
+        fetchKintoneApi("/k/v1/app/form/fields.json", appId, headers),
+        fetchKintoneApi("/k/v1/app/customize.json", appId, headers),
       ]);
 
-      // その他の設定を一括取得
-      const [layoutInfo, viewsInfo, appAcl, recordAcl, fieldAcl, notifGen, notifRec, notifRem, actions, plugins] = await Promise.all([
-        fetchKintoneApi("/k/v1/app/form/layout.json", appId, headers),
-        fetchKintoneApi("/k/v1/app/views.json", appId, headers),
-        fetchKintoneApi("/k/v1/app/acl.json", appId, headers),
-        fetchKintoneApi("/k/v1/record/acl.json", appId, headers),
-        fetchKintoneApi("/k/v1/field/acl.json", appId, headers),
-        fetchKintoneApi("/k/v1/app/notifications/general.json", appId, headers),
-        fetchKintoneApi("/k/v1/app/notifications/perRecord.json", appId, headers),
-        fetchKintoneApi("/k/v1/app/notifications/reminder.json", appId, headers),
-        fetchKintoneApi("/k/v1/app/actions.json", appId, headers),
-        fetchKintoneApi("/k/v1/app/plugins.json", appId, headers),
-      ]);
+      const { name: appName } = appInfo;
+      if (!appName) throw new Error("アプリ名が取得できませんでした。");
 
-      // JSON保存とMD生成
-      await Promise.all([
-        fs.writeFile(path.join(jsonDir, "layout.json"), JSON.stringify(layoutInfo, null, 2), "utf-8"),
-        fs.writeFile(path.join(jsonDir, "views.json"), JSON.stringify(viewsInfo, null, 2), "utf-8"),
-        fs.writeFile(path.join(jsonDir, "appAcl.json"), JSON.stringify(appAcl, null, 2), "utf-8"),
-        fs.writeFile(path.join(jsonDir, "recordAcl.json"), JSON.stringify(recordAcl, null, 2), "utf-8"),
-        fs.writeFile(path.join(jsonDir, "fieldAcl.json"), JSON.stringify(fieldAcl, null, 2), "utf-8"),
-        fs.writeFile(path.join(jsonDir, "notificationsGeneral.json"), JSON.stringify(notifGen, null, 2), "utf-8"),
-        fs.writeFile(path.join(jsonDir, "notificationsPerRecord.json"), JSON.stringify(notifRec, null, 2), "utf-8"),
-        fs.writeFile(path.join(jsonDir, "notificationsReminder.json"), JSON.stringify(notifRem, null, 2), "utf-8"),
-        fs.writeFile(path.join(jsonDir, "actions.json"), JSON.stringify(actions, null, 2), "utf-8"),
-        fs.writeFile(path.join(jsonDir, "plugins.json"), JSON.stringify(plugins, null, 2), "utf-8"),
-      ]);
+      const safeAppName = toSafeFileName(appName);
+      const appDir = path.join(resultDir, `${appId}_${safeAppName}`);
+      const jsonDir = path.join(appDir, "json");
+      await fs.mkdir(jsonDir, { recursive: true });
 
-      // ドキュメント生成
-      await Promise.all([
-        handleLookups(appId, appName, appDir, fieldsInfo, headers, appNameCache),
-        fs.writeFile(path.join(appDir, "form.md"), generateFormMd(appId, fieldsInfo, layoutInfo), "utf-8"),
-        viewsInfo.views ? fs.writeFile(path.join(appDir, "view.md"), generateViewMd(appId, viewsInfo), "utf-8") : Promise.resolve(),
-        (appAcl.rights?.length || recordAcl.rights?.length || fieldAcl.rights?.length)
-          ? fs.writeFile(path.join(appDir, "acl.md"), generateAclMd(appId, appAcl, recordAcl, fieldAcl), "utf-8")
-          : Promise.resolve(),
-        (notifGen.generalNotifications?.length || notifRec.perRecordNotifications?.length || notifRem.reminderNotifications?.length)
-          ? fs.writeFile(path.join(appDir, "notification.md"), generateNotificationMd(appId, notifGen, notifRec, notifRem), "utf-8")
-          : Promise.resolve(),
-      ]);
-      console.log(`  [Info] アプリID: ${appId} の設定ファイルダウンロードが完了しました。`);
-    })();
+      // 2. AI処理（カスタマイズファイルのDL含む）と、その他のメタデータDLを並列実行
+      const aiTask = handleCustomizeFiles(appId, appName, appDir, customizeInfo, headers, setting, promptTemplates, pastResultDirs, safeAppName, skipAi);
 
-    // 3. 全てのタスクの完了を待機
-    await Promise.all([aiTask, metaTask]);
+      const metaTask = (async () => {
+        // JSONの書き出し
+        await Promise.all([
+          fs.writeFile(path.join(jsonDir, "app.json"), JSON.stringify(appInfo, null, 2), "utf-8"),
+          fs.writeFile(path.join(jsonDir, "fields.json"), JSON.stringify(fieldsInfo, null, 2), "utf-8"),
+          fs.writeFile(path.join(jsonDir, "customize.json"), JSON.stringify(customizeInfo, null, 2), "utf-8"),
+        ]);
 
-    console.log(`=== アプリID: ${appId} の処理が完了しました ===\n`);
-  } catch (error) {
-    console.error(`=== アプリID: ${appId} はエラーが発生したためスキップしました ===\n`, error);
-    await writeErrorLog(resultDir, `アプリID: ${appId} の処理中にエラーが発生しました。`, error);
-  }
+        // その他の設定を一括取得
+        const [layoutInfo, viewsInfo, appAcl, recordAcl, fieldAcl, notifGen, notifRec, notifRem, actions, plugins] = await Promise.all([
+          fetchKintoneApi("/k/v1/app/form/layout.json", appId, headers),
+          fetchKintoneApi("/k/v1/app/views.json", appId, headers),
+          fetchKintoneApi("/k/v1/app/acl.json", appId, headers),
+          fetchKintoneApi("/k/v1/record/acl.json", appId, headers),
+          fetchKintoneApi("/k/v1/field/acl.json", appId, headers),
+          fetchKintoneApi("/k/v1/app/notifications/general.json", appId, headers),
+          fetchKintoneApi("/k/v1/app/notifications/perRecord.json", appId, headers),
+          fetchKintoneApi("/k/v1/app/notifications/reminder.json", appId, headers),
+          fetchKintoneApi("/k/v1/app/actions.json", appId, headers),
+          fetchKintoneApi("/k/v1/app/plugins.json", appId, headers),
+        ]);
+
+        // JSON保存とMD生成
+        await Promise.all([
+          fs.writeFile(path.join(jsonDir, "layout.json"), JSON.stringify(layoutInfo, null, 2), "utf-8"),
+          fs.writeFile(path.join(jsonDir, "views.json"), JSON.stringify(viewsInfo, null, 2), "utf-8"),
+          fs.writeFile(path.join(jsonDir, "appAcl.json"), JSON.stringify(appAcl, null, 2), "utf-8"),
+          fs.writeFile(path.join(jsonDir, "recordAcl.json"), JSON.stringify(recordAcl, null, 2), "utf-8"),
+          fs.writeFile(path.join(jsonDir, "fieldAcl.json"), JSON.stringify(fieldAcl, null, 2), "utf-8"),
+          fs.writeFile(path.join(jsonDir, "notificationsGeneral.json"), JSON.stringify(notifGen, null, 2), "utf-8"),
+          fs.writeFile(path.join(jsonDir, "notificationsPerRecord.json"), JSON.stringify(notifRec, null, 2), "utf-8"),
+          fs.writeFile(path.join(jsonDir, "notificationsReminder.json"), JSON.stringify(notifRem, null, 2), "utf-8"),
+          fs.writeFile(path.join(jsonDir, "actions.json"), JSON.stringify(actions, null, 2), "utf-8"),
+          fs.writeFile(path.join(jsonDir, "plugins.json"), JSON.stringify(plugins, null, 2), "utf-8"),
+        ]);
+
+        // ドキュメント生成
+        await Promise.all([
+          handleLookups(appId, appName, appDir, fieldsInfo, headers, appNameCache),
+          fs.writeFile(path.join(appDir, "form.md"), generateFormMd(appId, fieldsInfo, layoutInfo), "utf-8"),
+          viewsInfo.views ? fs.writeFile(path.join(appDir, "view.md"), generateViewMd(appId, viewsInfo), "utf-8") : Promise.resolve(),
+          (appAcl.rights?.length || recordAcl.rights?.length || fieldAcl.rights?.length)
+            ? fs.writeFile(path.join(appDir, "acl.md"), generateAclMd(appId, appAcl, recordAcl, fieldAcl), "utf-8")
+            : Promise.resolve(),
+          (notifGen.generalNotifications?.length || notifRec.perRecordNotifications?.length || notifRem.reminderNotifications?.length)
+            ? fs.writeFile(path.join(appDir, "notification.md"), generateNotificationMd(appId, notifGen, notifRec, notifRem), "utf-8")
+            : Promise.resolve(),
+        ]);
+        console.log(`  [Info] アプリID: ${appId} の設定ファイルダウンロードが完了しました。`);
+      })();
+
+      // 3. 全てのタスクの完了を待機
+      await Promise.all([aiTask, metaTask]);
+
+      console.log(`=== アプリID: ${appId} の処理が完了しました ===\n`);
+    },
+    catchCallback: async (error: any) => {
+      console.error(`=== アプリID: ${appId} はエラーが発生したためスキップしました ===\n`, error);
+      await writeErrorLog(resultDir, `アプリID: ${appId} の処理中にエラーが発生しました。`, error);
+    }
+  });
 }
 
 /**
@@ -220,15 +229,18 @@ async function handleLookups(appId: number, appName: string, appDir: string, fie
         if (appNameCache[relatedAppId]) {
           relatedAppName = appNameCache[relatedAppId];
         } else {
-          try {
-            const info = await fetchKintoneApi("/k/v1/app.json", Number(relatedAppId), headers);
-            relatedAppName = info.name;
-            appNameCache[relatedAppId] = relatedAppName;
-          } catch (e) {
-            relatedAppName = "取得不可";
-            appNameCache[relatedAppId] = relatedAppName;
-            await writeErrorLog(appDir, `ルックアップ先アプリ情報 (ID: ${relatedAppId}) の取得に失敗しました。`, e);
-          }
+          await safeRunAsync({
+            tryCallback: async () => {
+              const info = await fetchKintoneApi("/k/v1/app.json", Number(relatedAppId), headers);
+              relatedAppName = info.name;
+              appNameCache[relatedAppId] = relatedAppName;
+            },
+            catchCallback: async (e) => {
+              relatedAppName = "取得不可";
+              appNameCache[relatedAppId] = relatedAppName;
+              await writeErrorLog(appDir, `ルックアップ先アプリ情報 (ID: ${relatedAppId}) の取得に失敗しました。`, e);
+            }
+          });
         }
       }
       
@@ -406,11 +418,13 @@ async function* handleAiGeneration(
     const resultFileName = `${functionalName}_result.md`;
     const resultFilePath = path.join(resultsDir, resultFileName);
 
-    try {
-      await fs.access(resultFilePath);
-      console.log(`  [Skip] ${functionalName} の回答は既に存在します。`);
-      return;
-    } catch (e) { }
+    await safeRunAsync({
+      tryCallback: async () => {
+        await fs.access(resultFilePath);
+        console.log(`  [Skip] ${functionalName} の回答は既に存在します。`);
+        return;
+      }
+    });
 
     const appFolderName = `${appId}_${safeAppName}`;
     const cached = await getCachedResult(pastResultDirs, appFolderName, `${functionalName}.md`, resultFileName, fullPrompt);
