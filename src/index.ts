@@ -19,7 +19,7 @@ import {
 import { safeRunAsync } from "./utils";
 
 // メイン処理
-async function main() {
+const main = async () => {
   const isResumeMode = process.argv.length > 2;
   const settingPath = path.join(process.cwd(), "setting.json");
   let setting: Setting;

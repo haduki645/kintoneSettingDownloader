@@ -1,7 +1,7 @@
 import { KINTONE_BASE_URL } from "./kintone";
 import { getCheckMark, getEntityName, stripHtml } from "./utils";
 
-export function generateLookupMd(appName: string, appId: number, rows: string[]): string {
+export const generateLookupMd = (appName: string, appId: number, rows: string[]): string => {
   return `# ルックアップ関係一覧\n\n## [${appName} (アプリID: ${appId})](${KINTONE_BASE_URL}/k/admin/app/flow?app=${appId}#section=form)\n\n` +
     `<style>\n` +
     `  table { border-collapse: collapse; width: 100%; font-size: 14px; }\n` +
@@ -26,7 +26,7 @@ export function generateLookupMd(appName: string, appId: number, rows: string[])
     `</table>\n`;
 }
 
-export function generateViewMd(appId: number, viewsInfo: any): string {
+export const generateViewMd = (appId: number, viewsInfo: any): string => {
   let viewMdContent = `# [一覧設定 (アプリID: ${appId})](${KINTONE_BASE_URL}/k/admin/app/flow?app=${appId}#section=views)\n\n`;
   const style = `<style>\n` +
     `  table { border-collapse: collapse; width: 100%; font-size: 14px; }\n` +
@@ -68,7 +68,7 @@ export function generateViewMd(appId: number, viewsInfo: any): string {
   return viewMdContent;
 }
 
-export function generateAclMd(appId: number, appAclInfo: any, recordAclInfo: any, fieldAclInfo: any): string {
+export const generateAclMd = (appId: number, appAclInfo: any, recordAclInfo: any, fieldAclInfo: any): string => {
   const { rights: appRights = [] } = appAclInfo;
   const { rights: recordRights = [] } = recordAclInfo;
   const { rights: fieldRights = [] } = fieldAclInfo;
@@ -148,7 +148,7 @@ export function generateAclMd(appId: number, appAclInfo: any, recordAclInfo: any
   return sections.filter(Boolean).join("");
 }
 
-export function generateNotificationMd(appId: number, notificationsGeneralInfo: any, notificationsPerRecordInfo: any, notificationsReminderInfo: any): string {
+export const generateNotificationMd = (appId: number, notificationsGeneralInfo: any, notificationsPerRecordInfo: any, notificationsReminderInfo: any): string => {
   const { generalNotifications: generalNotifs = [] } = notificationsGeneralInfo;
   const { perRecordNotifications: perRecordNotifs = [] } = notificationsPerRecordInfo;
   const { reminderNotifications: reminderNotifs = [] } = notificationsReminderInfo;
@@ -218,7 +218,7 @@ export function generateNotificationMd(appId: number, notificationsGeneralInfo: 
   return sections.filter(Boolean).join("");
 }
 
-export function generateFormMd(appId: number, fieldsInfo: any, layoutInfo: any): string {
+export const generateFormMd = (appId: number, fieldsInfo: any, layoutInfo: any): string => {
   const { properties = {} } = fieldsInfo;
   const { layout = [] } = layoutInfo;
 

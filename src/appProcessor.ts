@@ -26,7 +26,7 @@ import { safeRunAsync } from "./utils";
 /**
  * プロンプトテンプレートの読み込み
  */
-export async function loadPromptTemplates(): Promise<PromptTemplate[]> {
+export const loadPromptTemplates = async (): Promise<PromptTemplate[]> => {
   const promptTemplates: PromptTemplate[] = [];
   const promptTemplatesDir = path.join(process.cwd(), "prompt_templates");
   await safeRunAsync({
@@ -61,7 +61,7 @@ export async function loadPromptTemplates(): Promise<PromptTemplate[]> {
 /**
  * ワークスペースを開く
  */
-export function openWorkspace(workspacePath: string) {
+export const openWorkspace = (workspacePath: string) => {
   console.log(`[Info] result.code-workspace を開きます...`);
   exec(`code "${workspacePath}"`, (err) => {
     if (err) exec(`start "" "${workspacePath}"`);
@@ -71,7 +71,7 @@ export function openWorkspace(workspacePath: string) {
 /**
  * 既存の結果フォルダに対してAI処理のみを再開する
  */
-export async function resumeMain(resultDir: string, setting: Setting, promptTemplates: PromptTemplate[]) {
+export const resumeMain = async (resultDir: string, setting: Setting, promptTemplates: PromptTemplate[]) => {
   console.log(`=== 既存の結果ディレクトリ (${path.basename(resultDir)}) を対象にAI処理を再開します ===`);
   const baseResultDir = path.dirname(resultDir);
   const entries = await fs.readdir(resultDir, { withFileTypes: true });
@@ -111,9 +111,9 @@ export async function resumeMain(resultDir: string, setting: Setting, promptTemp
 }
 
 /**
- * アプリごとのメイン処理
+ * 個別アプリの設定ダウンロードとドキュメント生成
  */
-export async function processApp(
+export const processApp = async (
   appId: number,
   setting: Setting,
   headers: any,
@@ -122,7 +122,7 @@ export async function processApp(
   promptTemplates: PromptTemplate[],
   appNameCache: Record<string, string>,
   skipAi = false
-) {
+) => {
   console.log(`=== アプリID: ${appId} の処理を開始します ===`);
   await safeRunAsync({
     tryCallback: async () => {
@@ -208,9 +208,16 @@ export async function processApp(
 }
 
 /**
- * ルックアップ関係の処理
+ * ルックアップ情報の取得とMD生成
  */
-async function handleLookups(appId: number, appName: string, appDir: string, fieldsInfo: any, headers: any, appNameCache: Record<string, string>) {
+const handleLookups = async (
+  appId: number,
+  appName: string,
+  appDir: string,
+  fieldsInfo: any,
+  headers: any,
+  appNameCache: Record<string, string>
+) => {
   const extractLookups = async (properties: any, prefix = ""): Promise<string[]> => {
     const propertyEntries = Object.entries(properties as Record<string, any>);
 
@@ -271,13 +278,20 @@ async function handleLookups(appId: number, appName: string, appDir: string, fie
 }
 
 /**
- * カスタマイズファイルの処理
+ * カスタマイズファイルのDLとAI処理
  */
-async function handleCustomizeFiles(
-  appId: number, appName: string, appDir: string, customizeInfo: any, headers: any,
-  setting: Setting, promptTemplates: PromptTemplate[], pastResultDirs: string[], safeAppName: string,
+const handleCustomizeFiles = async (
+  appId: number,
+  appName: string,
+  appDir: string,
+  customizeInfo: any,
+  headers: any,
+  setting: Setting,
+  promptTemplates: PromptTemplate[],
+  pastResultDirs: string[],
+  safeAppName: string,
   skipAi = false
-) {
+) => {
   const scopes = ["desktop", "mobile"];
   const types = ["js", "css"];
   const customizeDir = path.join(appDir, "customize");
@@ -316,11 +330,11 @@ async function handleCustomizeFiles(
 /**
  * マージとAI処理
  */
-async function processMergeAndAi(
+const processMergeAndAi = async (
   appId: number, appName: string, appDir: string, scope: string, type: string,
   allFilePaths: string[], setting: Setting, promptTemplates: PromptTemplate[], pastResultDirs: string[], safeAppName: string,
   skipAi = false
-) {
+) => {
   const exclude = setting.excludeFromMerge || [];
   const files = allFilePaths.filter(p => !exclude.includes(path.basename(p))).sort();
   const excluded = allFilePaths.filter(p => exclude.includes(path.basename(p))).sort();
@@ -360,11 +374,17 @@ async function processMergeAndAi(
 }
 
 /**
- * AI生成処理
+ * AIによる解析処理
  */
-async function* handleAiGeneration(
-  appId: number, appDir: string, outputFileName: string, mergedContent: string,
-  setting: Setting, promptTemplates: PromptTemplate[], pastResultDirs: string[], safeAppName: string
+const handleAiGeneration = async function* (
+  appId: number,
+  appDir: string,
+  outputFileName: string,
+  mergedContent: string,
+  setting: Setting,
+  promptTemplates: PromptTemplate[],
+  pastResultDirs: string[],
+  safeAppName: string
 ): AsyncGenerator<string, void, void> {
   const markerRegex = /#仕様書@\{(.+?)\}/g;
   const matches: MarkerMatch[] = Array.from(mergedContent.matchAll(markerRegex)).map(m => {

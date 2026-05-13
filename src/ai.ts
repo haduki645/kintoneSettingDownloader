@@ -20,8 +20,8 @@ export async function* callAiApi(messages: any[], config: AiConfig): AsyncGenera
 
   const { baseUrl, model } = config;
   const response = await axios.post(`${baseUrl}/chat/completions`, {
-    model: model,
-    messages: messages,
+    model,
+    messages,
     temperature: 0.7,
     stream: true, // ストリーミングを有効化
   }, {
@@ -70,9 +70,9 @@ export async function* callAiApi(messages: any[], config: AiConfig): AsyncGenera
 let initPromise: Promise<void> | null = null;
 
 /**
- * LM Studioが起動しているか確認し、起動していなければ設定されたパスから起動を試みる
+ * LM Studioが起動しているか確認し、起動していなければ設定されたパスから起動を試める
  */
-async function ensureLmStudioRunning(config: AiConfig) {
+const ensureLmStudioRunning = async (config: AiConfig) => {
   const { baseUrl, model, lmStudioPath } = config;
   console.log("[AI] APIサーバーの起動状態を確認中...");
   const isUp = await checkServer(baseUrl, model);
@@ -115,7 +115,7 @@ async function ensureLmStudioRunning(config: AiConfig) {
   }
 }
 
-async function checkServer(baseUrl: string, model?: string): Promise<boolean> {
+const checkServer = async (baseUrl: string, model?: string): Promise<boolean> => {
   return await safeRunAsync({
     tryCallback: async () => {
       // 1. モデル一覧が取得できるか確認
@@ -147,19 +147,19 @@ async function checkServer(baseUrl: string, model?: string): Promise<boolean> {
 }
 
 /**
- * 過去の結果からキャッシュを探す
+ * 過去の結果フォルダから同じプロンプトの実行結果を探す
  */
-export async function getCachedResult(
-  pastBaseDirs: string[],
+export const getCachedResult = async (
+  pastResultDirs: string[],
   appFolderName: string,
-  promptFileName: string,
-  resultFileName: string,
-  currentPromptContent: string
-): Promise<string | null> {
-  const results = await Promise.all(pastBaseDirs.map(async baseDir => {
-    const oldAppDir = path.join(baseDir, appFolderName);
-    const oldPromptPath = path.join(oldAppDir, "prompts", promptFileName);
-    const oldResultPath = path.join(oldAppDir, "prompts_results", resultFileName);
+  targetResultFileName: string,
+  individualFileName: string,
+  fullPrompt: string
+): Promise<string | null> => {
+  const results = await Promise.all(pastResultDirs.map(async (pastDir) => {
+    const oldAppDir = path.join(pastDir, appFolderName);
+    const oldPromptPath = path.join(oldAppDir, "prompts", individualFileName);
+    const oldResultPath = path.join(oldAppDir, "prompts_results", targetResultFileName);
 
     return await safeRunAsync({
       tryCallback: async () => {
@@ -167,7 +167,7 @@ export async function getCachedResult(
           fs.readFile(oldPromptPath, "utf-8"),
           fs.readFile(oldResultPath, "utf-8")
         ]);
-        if (oldPromptContent === currentPromptContent) {
+        if (oldPromptContent === fullPrompt) {
           return oldResultContent;
         }
         return null;

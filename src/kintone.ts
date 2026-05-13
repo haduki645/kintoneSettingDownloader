@@ -13,7 +13,7 @@ const KINTONE_PASSWORD = process.env.KINTONE_PASSWORD || "";
 /**
  * 認証ヘッダーを生成する
  */
-export function getAuthHeaders() {
+export const getAuthHeaders = () => {
   if (KINTONE_API_TOKEN) {
     return { "X-Cybozu-API-Token": KINTONE_API_TOKEN };
   } else if (KINTONE_USERNAME && KINTONE_PASSWORD) {
@@ -30,11 +30,11 @@ export function getAuthHeaders() {
 /**
  * Kintone APIを呼び出してJSONを取得する関数
  */
-export async function fetchKintoneApi(
+export const fetchKintoneApi = async (
   endpoint: string,
   appId: number,
   headers: any,
-): Promise<any> {
+): Promise<any> => {
   // app.json のみクエリパラメータが 'id' になる点に注意
   const paramName = endpoint === "/k/v1/app.json" ? "id" : "app";
   const url = `${KINTONE_BASE_URL}${endpoint}?${paramName}=${appId}`;
@@ -59,10 +59,10 @@ export async function fetchKintoneApi(
 /**
  * Kintoneからファイルをダウンロードする関数
  */
-export async function downloadKintoneFile(
+export const downloadKintoneFile = async (
   fileKey: string,
   headers: any,
-): Promise<Buffer> {
+): Promise<Buffer> => {
   const url = `${KINTONE_BASE_URL}/k/v1/file.json?fileKey=${fileKey}`;
   
   return await safeRunAsync({

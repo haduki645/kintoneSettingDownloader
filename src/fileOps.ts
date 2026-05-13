@@ -6,14 +6,12 @@ import { formatTimestamp, errorToString, safeRunAsync } from "./utils";
 /**
  * タイムスタンプ付きのディレクトリ名を取得する
  */
-export function getTimestampedDirName(): string {
-  return formatTimestamp(new Date());
-}
+export const getTimestampedDirName = (): string => formatTimestamp(new Date());
 
 /**
  * 過去の結果ディレクトリ一覧を取得する（降順）
  */
-export async function getPastResultDirs(baseDir: string): Promise<string[]> {
+export const getPastResultDirs = async (baseDir: string): Promise<string[]> => {
   return await safeRunAsync({
     tryCallback: async () => {
       const entries = await fs.readdir(baseDir, { withFileTypes: true });
@@ -32,20 +30,24 @@ export async function getPastResultDirs(baseDir: string): Promise<string[]> {
 /**
  * 古い結果ディレクトリを削除する
  */
-export async function cleanupOldResults(baseDir: string, maxCacheCount: number) {
-  const dirs = await getPastResultDirs(baseDir);
-  const toDelete = dirs.slice(maxCacheCount);
-  
-  await Promise.all(toDelete.map(async dirName => {
-    await fs.rm(path.join(baseDir, dirName), { recursive: true, force: true });
-    console.log(`[Info] 古い結果フォルダを削除しました: ${dirName}`);
-  }));
+export const cleanupOldResults = async (baseDir: string, maxCacheCount: number) => {
+  await safeRunAsync({
+    tryCallback: async () => {
+      const dirs = await getPastResultDirs(baseDir);
+      const toDelete = dirs.slice(maxCacheCount);
+      
+      await Promise.all(toDelete.map(async dirName => {
+        await fs.rm(path.join(baseDir, dirName), { recursive: true, force: true });
+        console.log(`[Info] 古い結果フォルダを削除しました: ${dirName}`);
+      }));
+    }
+  });
 }
 
 /**
  * JSファイルをミニファイする
  */
-export async function minifyJs(content: string, outputPath: string) {
+export const minifyJs = async (content: string, outputPath: string) => {
   return await safeRunAsync({
     tryCallback: async () => {
       const { code } = await minify(content);
@@ -65,7 +67,7 @@ export async function minifyJs(content: string, outputPath: string) {
 /**
  * エラーログをファイルに書き出す
  */
-export async function writeErrorLog(resultDir: string, message: string, error?: any) {
+export const writeErrorLog = async (resultDir: string, message: string, error?: any) => {
   const logPath = path.join(resultDir, "error.log");
   const nowStr = new Date().toLocaleString("ja-JP");
   
@@ -88,7 +90,7 @@ export async function writeErrorLog(resultDir: string, message: string, error?: 
 /**
  * readme.mdの内容を取得
  */
-export function getReadmeContent(): string {
+export const getReadmeContent = (): string => {
   return `# ダウンロードされたファイルの説明
 
 各アプリフォルダ内にダウンロードされるJSONファイルおよびディレクトリの意味は以下の通りです。
