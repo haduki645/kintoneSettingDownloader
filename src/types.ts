@@ -16,4 +16,10 @@ export interface Setting {
 export interface MarkerMatch {
   functionalName: string;
   marker: string;
+  lineNumber: number;
+}
+
+export interface PromptTemplate {
+  name: string;
+  content: string;
 }

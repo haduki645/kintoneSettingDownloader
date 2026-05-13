@@ -34,11 +34,11 @@ export async function cleanupOldResults(baseDir: string, maxCacheCount: number) 
   const dirs = await getPastResultDirs(baseDir);
   if (dirs.length > maxCacheCount) {
     const toDelete = dirs.slice(maxCacheCount);
-    for (const dirName of toDelete) {
+    await Promise.all(toDelete.map(async dirName => {
       const fullPath = path.join(baseDir, dirName);
       await fs.rm(fullPath, { recursive: true, force: true });
       console.log(`[Info] 古い結果フォルダを削除しました: ${dirName}`);
-    }
+    }));
   }
 }
 
@@ -106,7 +106,6 @@ export function getReadmeContent(): string {
 - \`notification.md\`: アプリ、レコード、リマインダーの通知設定一覧（設定が無い場合は未出力）
 - \`customize/\`: \`customize.json\` で設定されているJavaScript/CSSファイルの実体が保存されるフォルダ / API: \`/k/v1/file.json\`
 - \`mergeFiles/\`: マージおよびミニファイされたJavaScript/CSSファイルが保存されるフォルダ
-- \`prompts/\`: 仕様書マーカーから生成された AI へのプロンプトファイルが保存されるフォルダ
 - \`prompts_results/\`: AI によって生成された回答（仕様書）が保存されるフォルダ
 - \`error.log\`: 実行中にエラーが発生した場合に出力されるログファイル
 `;

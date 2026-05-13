@@ -48,17 +48,17 @@ export function generateViewMd(appId: number, viewsInfo: any): string {
 
   const viewsArray = Object.values(viewsInfo.views as Record<string, any>).sort((a, b) => Number(a.index) - Number(b.index));
 
-  for (const view of viewsArray) {
+  viewMdContent += viewsArray.map(view => {
     const viewUrl = `${KINTONE_BASE_URL}/k/${appId}/?view=${view.id}`;
     const filterCond = view.filterCond ? `\`${view.filterCond}\`` : "なし";
     const sort = view.sort ? `\`${view.sort}\`` : "なし";
-    viewMdContent += `    <tr>\n`;
-    viewMdContent += `      <td><a href="${viewUrl}" target="_blank">${view.name}</a></td>\n`;
-    viewMdContent += `      <td>${view.type}</td>\n`;
-    viewMdContent += `      <td>${filterCond}</td>\n`;
-    viewMdContent += `      <td>${sort}</td>\n`;
-    viewMdContent += `    </tr>\n`;
-  }
+    return `    <tr>\n` +
+           `      <td><a href="${viewUrl}" target="_blank">${view.name}</a></td>\n` +
+           `      <td>${view.type}</td>\n` +
+           `      <td>${filterCond}</td>\n` +
+           `      <td>${sort}</td>\n` +
+           `    </tr>\n`;
+  }).join("");
 
   viewMdContent += `  </tbody>\n`;
   viewMdContent += `</table>\n`;
@@ -86,46 +86,40 @@ export function generateAclMd(appId: number, appAclInfo: any, recordAclInfo: any
   // アプリのアクセス権
   aclMdContent += `## アプリのアクセス権\n\n`;
   aclMdContent += `<table>\n  <thead>\n    <tr>\n      <th>対象</th>\n      <th>レコード閲覧</th>\n      <th>レコード追加</th>\n      <th>レコード編集</th>\n      <th>レコード削除</th>\n      <th>アプリ管理</th>\n      <th>ファイル出力</th>\n      <th>ファイル取り込み</th>\n    </tr>\n  </thead>\n  <tbody>\n`;
-  for (const right of appRights) {
+  aclMdContent += appRights.map((right: any) => {
     const entity = right.entity.code || right.entity.type;
     const check = (val: boolean) => val ? `<span class="permission-tag perm-ok">○</span>` : `<span class="permission-tag perm-ng">×</span>`;
-    aclMdContent += `    <tr>\n`;
-    aclMdContent += `      <td>${entity}</td>\n`;
-    aclMdContent += `      <td>${check(right.recordViewable)}</td>\n`;
-    aclMdContent += `      <td>${check(right.recordAddable)}</td>\n`;
-    aclMdContent += `      <td>${check(right.recordEditable)}</td>\n`;
-    aclMdContent += `      <td>${check(right.recordDeletable)}</td>\n`;
-    aclMdContent += `      <td>${check(right.appEditable)}</td>\n`;
-    aclMdContent += `      <td>${check(right.fileExportable)}</td>\n`;
-    aclMdContent += `      <td>${check(right.fileImportable)}</td>\n`;
-    aclMdContent += `    </tr>\n`;
-  }
+    return `    <tr>\n` +
+           `      <td>${entity}</td>\n` +
+           `      <td>${check(right.recordViewable)}</td>\n` +
+           `      <td>${check(right.recordAddable)}</td>\n` +
+           `      <td>${check(right.recordEditable)}</td>\n` +
+           `      <td>${check(right.recordDeletable)}</td>\n` +
+           `      <td>${check(right.appEditable)}</td>\n` +
+           `      <td>${check(right.fileExportable)}</td>\n` +
+           `      <td>${check(right.fileImportable)}</td>\n` +
+           `    </tr>\n`;
+  }).join("");
   aclMdContent += `  </tbody>\n</table>\n\n`;
 
   // レコードのアクセス権
   if (recordRights.length > 0) {
     aclMdContent += `## レコードのアクセス権\n\n`;
     aclMdContent += `<table>\n  <thead>\n    <tr>\n      <th>優先度</th>\n      <th>条件</th>\n      <th>対象</th>\n      <th>閲覧</th>\n      <th>編集</th>\n      <th>削除</th>\n    </tr>\n  </thead>\n  <tbody>\n`;
-    let priority = 1;
-    for (const right of recordRights) {
+    aclMdContent += recordRights.map((right: any, priorityIdx: number) => {
       const rowCount = right.entities.length;
-      for (let i = 0; i < rowCount; i++) {
-        const entityRight = right.entities[i];
+      return right.entities.map((entityRight: any, i: number) => {
         const entity = entityRight.entity.code || entityRight.entity.type;
         const check = (val: boolean) => val ? `<span class="permission-tag perm-ok">○</span>` : `<span class="permission-tag perm-ng">×</span>`;
-        aclMdContent += `    <tr>\n`;
-        if (i === 0) {
-          aclMdContent += `      <td rowspan="${rowCount}">${priority}</td>\n`;
-          aclMdContent += `      <td rowspan="${rowCount}">${right.filterCond || "なし"}</td>\n`;
-        }
-        aclMdContent += `      <td>${entity}</td>\n`;
-        aclMdContent += `      <td>${check(entityRight.viewable)}</td>\n`;
-        aclMdContent += `      <td>${check(entityRight.editable)}</td>\n`;
-        aclMdContent += `      <td>${check(entityRight.deletable)}</td>\n`;
-        aclMdContent += `    </tr>\n`;
-      }
-      priority++;
-    }
+        return `    <tr>\n` +
+               (i === 0 ? `      <td rowspan="${rowCount}">${priorityIdx + 1}</td>\n      <td rowspan="${rowCount}">${right.filterCond || "なし"}</td>\n` : "") +
+               `      <td>${entity}</td>\n` +
+               `      <td>${check(entityRight.viewable)}</td>\n` +
+               `      <td>${check(entityRight.editable)}</td>\n` +
+               `      <td>${check(entityRight.deletable)}</td>\n` +
+               `    </tr>\n`;
+      }).join("");
+    }).join("");
     aclMdContent += `  </tbody>\n</table>\n\n`;
   }
 
@@ -133,22 +127,19 @@ export function generateAclMd(appId: number, appAclInfo: any, recordAclInfo: any
   if (fieldRights.length > 0) {
     aclMdContent += `## フィールドのアクセス権\n\n`;
     aclMdContent += `<table>\n  <thead>\n    <tr>\n      <th>フィールドコード</th>\n      <th>対象</th>\n      <th>閲覧</th>\n      <th>編集</th>\n    </tr>\n  </thead>\n  <tbody>\n`;
-    for (const right of fieldRights) {
+    aclMdContent += fieldRights.map((right: any) => {
       const rowCount = right.entities.length;
-      for (let i = 0; i < rowCount; i++) {
-        const entityRight = right.entities[i];
+      return right.entities.map((entityRight: any, i: number) => {
         const entity = entityRight.entity.code || entityRight.entity.type;
         const check = (val: boolean) => val ? `<span class="permission-tag perm-ok">○</span>` : `<span class="permission-tag perm-ng">×</span>`;
-        aclMdContent += `    <tr>\n`;
-        if (i === 0) {
-          aclMdContent += `      <td rowspan="${rowCount}">${right.code}</td>\n`;
-        }
-        aclMdContent += `      <td>${entity}</td>\n`;
-        aclMdContent += `      <td>${check(entityRight.viewable)}</td>\n`;
-        aclMdContent += `      <td>${check(entityRight.editable)}</td>\n`;
-        aclMdContent += `    </tr>\n`;
-      }
-    }
+        return `    <tr>\n` +
+               (i === 0 ? `      <td rowspan="${rowCount}">${right.code}</td>\n` : "") +
+               `      <td>${entity}</td>\n` +
+               `      <td>${check(entityRight.viewable)}</td>\n` +
+               `      <td>${check(entityRight.editable)}</td>\n` +
+               `    </tr>\n`;
+      }).join("");
+    }).join("");
     aclMdContent += `  </tbody>\n</table>\n\n`;
   }
   return aclMdContent;
@@ -175,18 +166,18 @@ export function generateNotificationMd(appId: number, notificationsGeneralInfo: 
   if (generalNotifs.length > 0) {
     notifMdContent += `## アプリの条件通知\n\n`;
     notifMdContent += `<table>\n  <thead>\n    <tr>\n      <th>対象</th>\n      <th>レコード追加</th>\n      <th>編集</th>\n      <th>ステータス更新</th>\n      <th>コメント追加</th>\n      <th>ファイル読み込み</th>\n    </tr>\n  </thead>\n  <tbody>\n`;
-    for (const notif of generalNotifs) {
+    notifMdContent += generalNotifs.map((notif: any) => {
       const entity = notif.entity.code || notif.entity.type;
       const check = (val: boolean) => val ? `<span class="permission-tag perm-ok">○</span>` : `<span class="permission-tag perm-ng">×</span>`;
-      notifMdContent += `    <tr>\n`;
-      notifMdContent += `      <td>${entity}</td>\n`;
-      notifMdContent += `      <td>${check(notif.recordAdded)}</td>\n`;
-      notifMdContent += `      <td>${check(notif.recordEdited)}</td>\n`;
-      notifMdContent += `      <td>${check(notif.statusChanged)}</td>\n`;
-      notifMdContent += `      <td>${check(notif.commentAdded)}</td>\n`;
-      notifMdContent += `      <td>${check(notif.fileImported)}</td>\n`;
-      notifMdContent += `    </tr>\n`;
-    }
+      return `    <tr>\n` +
+             `      <td>${entity}</td>\n` +
+             `      <td>${check(notif.recordAdded)}</td>\n` +
+             `      <td>${check(notif.recordEdited)}</td>\n` +
+             `      <td>${check(notif.statusChanged)}</td>\n` +
+             `      <td>${check(notif.commentAdded)}</td>\n` +
+             `      <td>${check(notif.fileImported)}</td>\n` +
+             `    </tr>\n`;
+    }).join("");
     notifMdContent += `  </tbody>\n</table>\n\n`;
   }
 
@@ -194,22 +185,17 @@ export function generateNotificationMd(appId: number, notificationsGeneralInfo: 
   if (perRecordNotifs.length > 0) {
     notifMdContent += `## レコードの条件通知\n\n`;
     notifMdContent += `<table>\n  <thead>\n    <tr>\n      <th>条件</th>\n      <th>対象</th>\n      <th>通知内容</th>\n    </tr>\n  </thead>\n  <tbody>\n`;
-    for (const notif of perRecordNotifs) {
+    notifMdContent += perRecordNotifs.map((notif: any) => {
       const rowCount = notif.targets.length;
-      for (let i = 0; i < rowCount; i++) {
-        const target = notif.targets[i];
+      return notif.targets.map((target: any, i: number) => {
         const entity = target.entity.code || target.entity.type;
-        notifMdContent += `    <tr>\n`;
-        if (i === 0) {
-          notifMdContent += `      <td rowspan="${rowCount}">${notif.filterCond || "なし"}</td>\n`;
-        }
-        notifMdContent += `      <td>${entity}</td>\n`;
-        if (i === 0) {
-          notifMdContent += `      <td rowspan="${rowCount}">${notif.title || ""}</td>\n`;
-        }
-        notifMdContent += `    </tr>\n`;
-      }
-    }
+        return `    <tr>\n` +
+               (i === 0 ? `      <td rowspan="${rowCount}">${notif.filterCond || "なし"}</td>\n` : "") +
+               `      <td>${entity}</td>\n` +
+               (i === 0 ? `      <td rowspan="${rowCount}">${notif.title || ""}</td>\n` : "") +
+               `    </tr>\n`;
+      }).join("");
+    }).join("");
     notifMdContent += `  </tbody>\n</table>\n\n`;
   }
 
@@ -217,24 +203,18 @@ export function generateNotificationMd(appId: number, notificationsGeneralInfo: 
   if (reminderNotifs.length > 0) {
     notifMdContent += `## リマインダーの条件通知\n\n`;
     notifMdContent += `<table>\n  <thead>\n    <tr>\n      <th>条件</th>\n      <th>通知タイミング</th>\n      <th>対象</th>\n      <th>通知内容</th>\n    </tr>\n  </thead>\n  <tbody>\n`;
-    for (const notif of reminderNotifs) {
+    notifMdContent += reminderNotifs.map((notif: any) => {
       const rowCount = notif.targets.length;
       const timing = notif.timing ? `${notif.timing.code} ${notif.timing.days}日 ${notif.timing.hours}時間 ${notif.timing.minutes}分` : "";
-      for (let i = 0; i < rowCount; i++) {
-        const target = notif.targets[i];
+      return notif.targets.map((target: any, i: number) => {
         const entity = target.entity.code || target.entity.type;
-        notifMdContent += `    <tr>\n`;
-        if (i === 0) {
-          notifMdContent += `      <td rowspan="${rowCount}">${notif.filterCond || "なし"}</td>\n`;
-          notifMdContent += `      <td rowspan="${rowCount}">${timing}</td>\n`;
-        }
-        notifMdContent += `      <td>${entity}</td>\n`;
-        if (i === 0) {
-          notifMdContent += `      <td rowspan="${rowCount}">${notif.title || ""}</td>\n`;
-        }
-        notifMdContent += `    </tr>\n`;
-      }
-    }
+        return `    <tr>\n` +
+               (i === 0 ? `      <td rowspan="${rowCount}">${notif.filterCond || "なし"}</td>\n      <td rowspan="${rowCount}">${timing}</td>\n` : "") +
+               `      <td>${entity}</td>\n` +
+               (i === 0 ? `      <td rowspan="${rowCount}">${notif.title || ""}</td>\n` : "") +
+               `    </tr>\n`;
+      }).join("");
+    }).join("");
     notifMdContent += `  </tbody>\n</table>\n\n`;
   }
   return notifMdContent;
@@ -245,15 +225,15 @@ export function generateFormMd(appId: number, fieldsInfo: any, layoutInfo: any):
   const layout = layoutInfo.layout || [];
 
   // properties をフラットにする（テーブル内のフィールドも含む）
-  const flatProperties: Record<string, any> = {};
-  for (const [code, prop] of Object.entries(properties as Record<string, any>)) {
-    flatProperties[code] = prop;
+  const flatProperties: Record<string, any> = Object.entries(properties as Record<string, any>).reduce((acc, [code, prop]) => {
+    acc[code] = prop;
     if (prop.type === 'SUBTABLE' && prop.fields) {
-      for (const [subCode, subProp] of Object.entries(prop.fields)) {
-        flatProperties[subCode] = subProp;
-      }
+      Object.entries(prop.fields).forEach(([subCode, subProp]) => {
+        acc[subCode] = subProp;
+      });
     }
-  }
+    return acc;
+  }, {} as Record<string, any>);
 
   let formMdContent = `# [フォーム設定 (アプリID: ${appId})](${KINTONE_BASE_URL}/k/admin/app/flow?app=${appId}#section=form)\n\n`;
   const style = `<style>\n` +
@@ -268,27 +248,22 @@ export function generateFormMd(appId: number, fieldsInfo: any, layoutInfo: any):
   formMdContent += `<table>\n  <thead>\n    <tr>\n      <th>場所</th>\n      <th>フィールド名</th>\n      <th>フィールドコード</th>\n      <th>タイプ</th>\n      <th>必須</th>\n      <th>設定詳細</th>\n    </tr>\n  </thead>\n  <tbody>\n`;
 
   const renderFieldRows = (fields: any[], location: string) => {
-    let html = "";
-    for (const field of fields) {
-      html += `    <tr>\n`;
-      html += `      <td>${location}</td>\n`;
+    return fields.map(field => {
+      let rowHtml = `    <tr>\n      <td>${location}</td>\n`;
 
       if (field.type === 'HR') {
-        html += `      <td>(横線)</td>\n      <td>-</td>\n      <td>${field.type}</td>\n      <td>-</td>\n      <td>-</td>\n    </tr>\n`;
-        continue;
+        return rowHtml + `      <td>(横線)</td>\n      <td>-</td>\n      <td>${field.type}</td>\n      <td>-</td>\n      <td>-</td>\n    </tr>\n`;
       }
       if (field.type === 'LABEL') {
         const labelText = field.label ? field.label.replace(/<[^>]*>?/gm, '') : '(ラベル)';
-        html += `      <td>${labelText}</td>\n      <td>-</td>\n      <td>${field.type}</td>\n      <td>-</td>\n      <td>-</td>\n    </tr>\n`;
-        continue;
+        return rowHtml + `      <td>${labelText}</td>\n      <td>-</td>\n      <td>${field.type}</td>\n      <td>-</td>\n      <td>-</td>\n    </tr>\n`;
       }
       if (field.type === 'SPACER') {
-        html += `      <td>(スペース: ${field.elementId || 'IDなし'})</td>\n      <td>-</td>\n      <td>${field.type}</td>\n      <td>-</td>\n      <td>-</td>\n    </tr>\n`;
-        continue;
+        return rowHtml + `      <td>(スペース: ${field.elementId || 'IDなし'})</td>\n      <td>-</td>\n      <td>${field.type}</td>\n      <td>-</td>\n      <td>-</td>\n    </tr>\n`;
       }
 
       const prop = flatProperties[field.code];
-      let detailParts: string[] = [];
+      const detailParts: string[] = [];
       if (prop) {
         if (prop.options) {
           const options = Object.values(prop.options as Record<string, any>)
@@ -308,29 +283,27 @@ export function generateFormMd(appId: number, fieldsInfo: any, layoutInfo: any):
       const details = detailParts.join('<br>') || '-';
 
       if (prop) {
-        html += `      <td>${prop.label || '設定なし'}</td>\n      <td>${field.code}</td>\n      <td>${prop.type}</td>\n      <td>${prop.required ? '○' : '-'}</td>\n      <td>${details}</td>\n    </tr>\n`;
+        return rowHtml + `      <td>${prop.label || '設定なし'}</td>\n      <td>${field.code}</td>\n      <td>${prop.type}</td>\n      <td>${prop.required ? '○' : '-'}</td>\n      <td>${details}</td>\n    </tr>\n`;
       } else {
-        html += `      <td>不明</td>\n      <td>${field.code}</td>\n      <td>${field.type}</td>\n      <td>-</td>\n      <td>${details}</td>\n    </tr>\n`;
+        return rowHtml + `      <td>不明</td>\n      <td>${field.code}</td>\n      <td>${field.type}</td>\n      <td>-</td>\n      <td>${details}</td>\n    </tr>\n`;
       }
-    }
-    return html;
+    }).join("");
   };
 
-  for (const section of layout) {
+  formMdContent += layout.map((section: any) => {
     if (section.type === 'GROUP') {
       const groupProp = properties[section.code];
       const groupLabel = groupProp ? groupProp.label : section.code;
-      for (const row of section.layout) {
-        formMdContent += renderFieldRows(row.fields, `グループ: ${groupLabel}`);
-      }
+      return section.layout.map((row: any) => renderFieldRows(row.fields, `グループ: ${groupLabel}`)).join("");
     } else if (section.type === 'ROW') {
-      formMdContent += renderFieldRows(section.fields, ``);
+      return renderFieldRows(section.fields, ``);
     } else if (section.type === 'SUBTABLE') {
       const tableProp = properties[section.code];
       const tableLabel = tableProp ? tableProp.label : section.code;
-      formMdContent += renderFieldRows(section.fields, `テーブル: ${tableLabel}`);
+      return renderFieldRows(section.fields, `テーブル: ${tableLabel}`);
     }
-  }
+    return "";
+  }).join("");
 
   formMdContent += `  </tbody>\n</table>\n`;
 

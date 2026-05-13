@@ -1,29 +1,21 @@
 import fs from "fs/promises";
 import path from "path";
-import { exec } from "child_process";
 import {
   getAuthHeaders,
-  fetchKintoneApi,
-  downloadKintoneFile,
-  KINTONE_BASE_URL,
 } from "./kintone";
-import { Setting, MarkerMatch } from "./types";
-import { callAiApi, getCachedResult } from "./ai";
-import {
-  generateLookupMd,
-  generateViewMd,
-  generateAclMd,
-  generateNotificationMd,
-  generateFormMd,
-} from "./mdGenerators";
+import { Setting } from "./types";
 import {
   getTimestampedDirName,
   getPastResultDirs,
   cleanupOldResults,
-  minifyJs,
-  writeErrorLog,
   getReadmeContent,
 } from "./fileOps";
+import {
+  loadPromptTemplates,
+  openWorkspace,
+  resumeMain,
+  processApp,
+} from "./appProcessor";
 
 // メイン処理
 async function main() {
@@ -82,8 +74,15 @@ async function main() {
 
   const appNameCache: Record<string, string> = {};
 
-  for (const appId of setting.appIds) {
-    await processApp(appId, setting, headers, resultDir, pastResultDirs, promptTemplates, appNameCache);
+  // Phase 1: 全アプリのファイルをダウンロード
+  await setting.appIds.reduce(async (promise, appId) => {
+    await promise;
+    await processApp(appId, setting, headers, resultDir, pastResultDirs, promptTemplates, appNameCache, true);
+  }, Promise.resolve());
+
+  // Phase 2: 全アプリのAI解析を一括実行
+  if (setting.enableAi) {
+    await resumeMain(resultDir, setting, promptTemplates);
   }
 
   // 古い結果を整理
@@ -93,363 +92,6 @@ async function main() {
 
   if (setting.workspaceConfig) {
     openWorkspace(path.join(resultDir, "result.code-workspace"));
-  }
-}
-
-/**
- * プロンプトテンプレートの読み込み
- */
-async function loadPromptTemplates(): Promise<string[]> {
-  const promptTemplates: string[] = [];
-  const promptTemplatesDir = path.join(process.cwd(), "prompt_templates");
-  try {
-    const files = await fs.readdir(promptTemplatesDir);
-    const templateFiles = files.filter(f => f.endsWith(".md") || f.endsWith(".txt")).sort();
-    for (const f of templateFiles) {
-      promptTemplates.push(await fs.readFile(path.join(promptTemplatesDir, f), "utf-8"));
-    }
-  } catch (err) {}
-
-  if (promptTemplates.length === 0) {
-    const promptTemplatePath = path.join(process.cwd(), "prompt.md");
-    try {
-      promptTemplates.push(await fs.readFile(promptTemplatePath, "utf-8"));
-    } catch (err) {
-      console.warn("プロンプトテンプレートが見つからないため、プロンプト生成はスキップされます。");
-    }
-  }
-  return promptTemplates;
-}
-
-/**
- * ワークスペースを開く
- */
-function openWorkspace(workspacePath: string) {
-  console.log(`[Info] result.code-workspace を開きます...`);
-  exec(`code "${workspacePath}"`, (err) => {
-    if (err) exec(`start "" "${workspacePath}"`);
-  });
-}
-
-/**
- * 既存の結果フォルダに対してAI処理のみを再開する
- */
-async function resumeMain(resultDir: string, setting: Setting, promptTemplates: string[]) {
-  console.log(`=== 既存の結果ディレクトリ (${path.basename(resultDir)}) を対象にAI処理を再開します ===`);
-  const baseResultDir = path.dirname(resultDir);
-  const entries = await fs.readdir(resultDir, { withFileTypes: true });
-  const appDirs = entries.filter(e => e.isDirectory() && /^\d+_/.test(e.name)).map(e => e.name);
-
-  // 今回のディレクトリを除いた過去のディレクトリをキャッシュ対象にする
-  const pastDirsNames = await getPastResultDirs(baseResultDir);
-  const pastResultDirs = pastDirsNames
-    .filter(name => name !== path.basename(resultDir))
-    .slice(0, setting.maxCacheCount || 5)
-    .map(name => path.join(baseResultDir, name));
-
-  for (const appDirName of appDirs) {
-    const appId = parseInt(appDirName.split("_")[0]);
-    const appDir = path.join(resultDir, appDirName);
-    const safeAppName = appDirName.substring(appDirName.indexOf("_") + 1);
-    
-    const mergeDir = path.join(appDir, "mergeFiles");
-    try {
-      const files = await fs.readdir(mergeDir);
-      const jsFiles = files.filter(f => f.endsWith(".js") && !f.endsWith(".min.js"));
-      for (const jsFile of jsFiles) {
-        console.log(`[Resume] アプリ: ${appDirName}, ファイル: ${jsFile}`);
-        const mergedContent = await fs.readFile(path.join(mergeDir, jsFile), "utf-8");
-        await handleAiGeneration(appId, appDir, jsFile, mergedContent, setting, promptTemplates, pastResultDirs, safeAppName);
-      }
-    } catch (e) {
-      // mergeFiles がない場合はスキップ
-    }
-  }
-}
-
-/**
- * アプリごとのメイン処理
- */
-async function processApp(
-  appId: number,
-  setting: Setting,
-  headers: any,
-  resultDir: string,
-  pastResultDirs: string[],
-  promptTemplates: string[],
-  appNameCache: Record<string, string>
-) {
-  console.log(`=== アプリID: ${appId} の処理を開始します ===`);
-  try {
-    const appInfo = await fetchKintoneApi("/k/v1/app.json", appId, headers);
-    const appName = appInfo.name;
-    if (!appName) throw new Error("アプリ名が取得できませんでした。");
-
-    const safeAppName = appName.replace(/[\\/:*?"<>|]/g, "_");
-    const appDir = path.join(resultDir, `${appId}_${safeAppName}`);
-    const jsonDir = path.join(appDir, "json");
-
-    await fs.mkdir(jsonDir, { recursive: true });
-    await fs.writeFile(path.join(jsonDir, "app.json"), JSON.stringify(appInfo, null, 2), "utf-8");
-
-    // 各種設定の取得と保存
-    const fieldsInfo = await fetchKintoneApi("/k/v1/app/form/fields.json", appId, headers);
-    await fs.writeFile(path.join(jsonDir, "fields.json"), JSON.stringify(fieldsInfo, null, 2), "utf-8");
-
-    // ルックアップ情報の抽出とMD生成
-    await handleLookups(appId, appName, appDir, fieldsInfo, headers, appNameCache);
-
-    // フォームレイアウトの取得と保存
-    const layoutInfo = await fetchKintoneApi("/k/v1/app/form/layout.json", appId, headers);
-    await fs.writeFile(path.join(jsonDir, "layout.json"), JSON.stringify(layoutInfo, null, 2), "utf-8");
-    await fs.writeFile(path.join(appDir, "form.md"), generateFormMd(appId, fieldsInfo, layoutInfo), "utf-8");
-
-    const viewsInfo = await fetchKintoneApi("/k/v1/app/views.json", appId, headers);
-    await fs.writeFile(path.join(jsonDir, "views.json"), JSON.stringify(viewsInfo, null, 2), "utf-8");
-    if (viewsInfo.views) {
-      await fs.writeFile(path.join(appDir, "view.md"), generateViewMd(appId, viewsInfo), "utf-8");
-    }
-
-    const customizeInfo = await fetchKintoneApi("/k/v1/app/customize.json", appId, headers);
-    await fs.writeFile(path.join(jsonDir, "customize.json"), JSON.stringify(customizeInfo, null, 2), "utf-8");
-
-    // 権限設定
-    const appAcl = await fetchKintoneApi("/k/v1/app/acl.json", appId, headers);
-    const recordAcl = await fetchKintoneApi("/k/v1/record/acl.json", appId, headers);
-    const fieldAcl = await fetchKintoneApi("/k/v1/field/acl.json", appId, headers);
-    await fs.writeFile(path.join(jsonDir, "appAcl.json"), JSON.stringify(appAcl, null, 2), "utf-8");
-    await fs.writeFile(path.join(jsonDir, "recordAcl.json"), JSON.stringify(recordAcl, null, 2), "utf-8");
-    await fs.writeFile(path.join(jsonDir, "fieldAcl.json"), JSON.stringify(fieldAcl, null, 2), "utf-8");
-    if (appAcl.rights?.length || recordAcl.rights?.length || fieldAcl.rights?.length) {
-      await fs.writeFile(path.join(appDir, "acl.md"), generateAclMd(appId, appAcl, recordAcl, fieldAcl), "utf-8");
-    }
-
-    // 通知設定
-    const notifGen = await fetchKintoneApi("/k/v1/app/notifications/general.json", appId, headers);
-    const notifRec = await fetchKintoneApi("/k/v1/app/notifications/perRecord.json", appId, headers);
-    const notifRem = await fetchKintoneApi("/k/v1/app/notifications/reminder.json", appId, headers);
-    await fs.writeFile(path.join(jsonDir, "notificationsGeneral.json"), JSON.stringify(notifGen, null, 2), "utf-8");
-    await fs.writeFile(path.join(jsonDir, "notificationsPerRecord.json"), JSON.stringify(notifRec, null, 2), "utf-8");
-    await fs.writeFile(path.join(jsonDir, "notificationsReminder.json"), JSON.stringify(notifRem, null, 2), "utf-8");
-    if (notifGen.generalNotifications?.length || notifRec.perRecordNotifications?.length || notifRem.reminderNotifications?.length) {
-      await fs.writeFile(path.join(appDir, "notification.md"), generateNotificationMd(appId, notifGen, notifRec, notifRem), "utf-8");
-    }
-
-    // アクション・プラグイン
-    const actions = await fetchKintoneApi("/k/v1/app/actions.json", appId, headers);
-    const plugins = await fetchKintoneApi("/k/v1/app/plugins.json", appId, headers);
-    await fs.writeFile(path.join(jsonDir, "actions.json"), JSON.stringify(actions, null, 2), "utf-8");
-    await fs.writeFile(path.join(jsonDir, "plugins.json"), JSON.stringify(plugins, null, 2), "utf-8");
-
-    // カスタマイズファイルのダウンロードとマージ
-    await handleCustomizeFiles(appId, appName, appDir, customizeInfo, headers, setting, promptTemplates, pastResultDirs, safeAppName);
-
-    console.log(`=== アプリID: ${appId} の処理が完了しました ===\n`);
-  } catch (error) {
-    console.error(`=== アプリID: ${appId} はエラーが発生したためスキップしました ===\n`, error);
-    await writeErrorLog(resultDir, `アプリID: ${appId} の処理中にエラーが発生しました。`, error);
-  }
-}
-
-/**
- * ルックアップ関係の処理
- */
-async function handleLookups(appId: number, appName: string, appDir: string, fieldsInfo: any, headers: any, appNameCache: Record<string, string>) {
-  const extractLookups = async (properties: any, prefix = ""): Promise<string[]> => {
-    let rows: string[] = [];
-    for (const [fieldCode, fieldDef] of Object.entries(properties as Record<string, any>)) {
-      if (fieldDef.type === "SUBTABLE" && fieldDef.fields) {
-        rows = rows.concat(await extractLookups(fieldDef.fields, `${prefix}${fieldCode} (テーブル) &gt; `));
-      } else if (fieldDef.lookup) {
-        const lookup = fieldDef.lookup;
-        const relatedAppId = lookup.relatedApp?.app || "不明";
-        let relatedAppName = "不明";
-        if (relatedAppId !== "不明") {
-          if (appNameCache[relatedAppId]) {
-            relatedAppName = appNameCache[relatedAppId];
-          } else {
-            try {
-              const info = await fetchKintoneApi("/k/v1/app.json", Number(relatedAppId), headers);
-              relatedAppName = info.name;
-              appNameCache[relatedAppId] = relatedAppName;
-            } catch (e) {
-              relatedAppName = "取得不可";
-              appNameCache[relatedAppId] = relatedAppName;
-              await writeErrorLog(appDir, `ルックアップ先アプリ情報 (ID: ${relatedAppId}) の取得に失敗しました。`, e);
-            }
-          }
-        }
-        const mappings = lookup.fieldMappings || [];
-        const rowCount = mappings.length || 1;
-        let rowHtml = `    <tr>\n      <td rowspan="${rowCount}">${prefix}${fieldCode}</td>\n`;
-        const appUrl = relatedAppId !== "不明" ? `<a href="${KINTONE_BASE_URL}/k/${relatedAppId}/" target="_blank">${relatedAppName} (ID: ${relatedAppId})</a>` : `${relatedAppName} (ID: ${relatedAppId})`;
-        rowHtml += `      <td rowspan="${rowCount}">${appUrl}</td>\n      <td rowspan="${rowCount}">${lookup.relatedKeyField}</td>\n`;
-        if (mappings.length > 0) {
-          rowHtml += `      <td>${mappings[0].field}</td>\n      <td>${mappings[0].relatedField}</td>\n    </tr>\n`;
-          for (let i = 1; i < mappings.length; i++) {
-            rowHtml += `    <tr>\n      <td>${mappings[i].field}</td>\n      <td>${mappings[i].relatedField}</td>\n    </tr>\n`;
-          }
-        } else {
-          rowHtml += `      <td>-</td>\n      <td>-</td>\n    </tr>\n`;
-        }
-        rows.push(rowHtml);
-      }
-    }
-    return rows;
-  };
-
-  if (fieldsInfo.properties) {
-    const rows = await extractLookups(fieldsInfo.properties);
-    if (rows.length > 0) {
-      await fs.writeFile(path.join(appDir, "lookup_relation.md"), generateLookupMd(appName, appId, rows), "utf-8");
-    }
-  }
-}
-
-/**
- * カスタマイズファイルの処理
- */
-async function handleCustomizeFiles(
-  appId: number, appName: string, appDir: string, customizeInfo: any, headers: any,
-  setting: Setting, promptTemplates: string[], pastResultDirs: string[], safeAppName: string
-) {
-  const scopes = ["desktop", "mobile"];
-  const types = ["js", "css"];
-  const customizeDir = path.join(appDir, "customize");
-
-  for (const scope of scopes) {
-    for (const type of types) {
-      const items = customizeInfo[scope]?.[type] || [];
-      const filesToMerge: string[] = [];
-      for (const item of items) {
-        if (item.type === "FILE" && item.file?.fileKey) {
-          const targetDir = path.join(customizeDir, scope, type);
-          await fs.mkdir(targetDir, { recursive: true });
-          const targetPath = path.join(targetDir, item.file.name.replace(/[\\/:*?"<>|]/g, "_"));
-          try {
-            const data = await downloadKintoneFile(item.file.fileKey, headers);
-            await fs.writeFile(targetPath, data);
-            filesToMerge.push(targetPath);
-          } catch (e) {
-            await writeErrorLog(appDir, `ファイルのダウンロードまたは保存に失敗しました: ${item.file.name}`, e);
-          }
-        }
-      }
-
-      if (filesToMerge.length > 0) {
-        await processMergeAndAi(appId, appName, appDir, scope, type, filesToMerge, setting, promptTemplates, pastResultDirs, safeAppName);
-      }
-    }
-  }
-}
-
-/**
- * マージとAI処理
- */
-async function processMergeAndAi(
-  appId: number, appName: string, appDir: string, scope: string, type: string,
-  allFilePaths: string[], setting: Setting, promptTemplates: string[], pastResultDirs: string[], safeAppName: string
-) {
-  const exclude = setting.excludeFromMerge || [];
-  const files = allFilePaths.filter(p => !exclude.includes(path.basename(p))).sort();
-  const excluded = allFilePaths.filter(p => exclude.includes(path.basename(p))).sort();
-
-  let mergedContent = `/*\n アプリ名: ${appName}\n 設定URL: ${KINTONE_BASE_URL}/k/admin/app/flow?app=${appId}\n マージ一覧:\n`;
-  files.forEach(f => mergedContent += ` - ${path.basename(f)}\n`);
-  mergedContent += ` 除外一覧:\n${excluded.length ? excluded.map(f => ` - ${path.basename(f)}`).join("\n") : " - なし"}\n*/\n\n`;
-
-  for (const f of files) {
-    const content = await fs.readFile(f, "utf-8");
-    mergedContent += `/* --- Original File: ${path.basename(f)} --- */\n${content}\n\n`;
-  }
-
-  const mergeDir = path.join(appDir, "mergeFiles");
-  await fs.mkdir(mergeDir, { recursive: true });
-  const outputFileName = `${scope}_merge.${type}`;
-  await fs.writeFile(path.join(mergeDir, outputFileName), mergedContent, "utf-8");
-
-  if (type === "js") {
-    if (promptTemplates.length > 0) {
-      await handleAiGeneration(appId, appDir, outputFileName, mergedContent, setting, promptTemplates, pastResultDirs, safeAppName);
-    }
-    await minifyJs(mergedContent, path.join(mergeDir, `${scope}_merge.min.js`));
-  }
-}
-
-/**
- * AI生成処理
- */
-async function handleAiGeneration(
-  appId: number, appDir: string, outputFileName: string, mergedContent: string,
-  setting: Setting, promptTemplates: string[], pastResultDirs: string[], safeAppName: string
-) {
-  const markerRegex = /#仕様書@\{(.+?)\}/g;
-  const matches: MarkerMatch[] = [];
-  let m;
-  while ((m = markerRegex.exec(mergedContent)) !== null) {
-    matches.push({ functionalName: m[1], marker: m[0] });
-  }
-
-  if (matches.length > 0) {
-    const promptsDir = path.join(appDir, "prompts");
-    const resultsDir = path.join(appDir, "prompts_results");
-    await fs.mkdir(promptsDir, { recursive: true });
-    await fs.mkdir(resultsDir, { recursive: true });
-
-    let aiMessages: any[] = [];
-    if (setting.enableAi && setting.aiConfig) {
-      aiMessages.push({
-        role: "user",
-        content: `以下のJavaScriptコードを解析対象として読み込んでください。以降のメッセージで、このコード内の特定の箇所についての設計書作成を個別に依頼します。\n\n\`\`\`javascript\n${mergedContent}\n\`\`\``
-      });
-      const firstResponse = await callAiApi(aiMessages, setting.aiConfig);
-      aiMessages.push({ role: "assistant", content: firstResponse });
-
-      for (const { functionalName, marker } of matches) {
-        const fullPrompt = promptTemplates.map(t =>
-          t.split("{{fileName}}").join(outputFileName).split("{{marker}}").join(marker)
-            .split("{{functionalName}}").join(functionalName).split("{{content}}").join(mergedContent)
-        ).join("\n\n---\n\n");
-
-        await fs.writeFile(path.join(promptsDir, `${functionalName}.md`), fullPrompt, "utf-8");
-
-        const resultFileName = `${functionalName}_result.md`;
-        const resultFilePath = path.join(resultsDir, resultFileName);
-
-        // すでに存在する場合はスキップ
-        try {
-          await fs.access(resultFilePath);
-          console.log(`  [Skip] ${functionalName} の回答は既に存在します。`);
-          continue;
-        } catch (e) {
-          // 存在しない場合は続行
-        }
-
-        const appFolderName = `${appId}_${safeAppName}`;
-        const cached = await getCachedResult(pastResultDirs, appFolderName, `${functionalName}.md`, resultFileName, fullPrompt);
-
-        if (cached) {
-          await fs.writeFile(path.join(resultsDir, resultFileName), cached, "utf-8");
-          aiMessages.push({ role: "assistant", content: cached });
-          console.log(`  [Cache] ${functionalName} の回答を再利用しました。`);
-        } else {
-          let combinedResult = "";
-          for (let i = 0; i < promptTemplates.length; i++) {
-            const prompt = promptTemplates[i]
-              .split("{{fileName}}").join(outputFileName).split("{{marker}}").join(marker)
-              .split("{{functionalName}}").join(functionalName).split("{{content}}").join("提示済みのコードを参照してください。");
-            
-            aiMessages.push({ role: "user", content: prompt });
-            console.log(`  [AI] ${functionalName} の回答を生成中 (${i + 1}/${promptTemplates.length})...`);
-            const res = await callAiApi(aiMessages, setting.aiConfig);
-            aiMessages.push({ role: "assistant", content: res });
-            combinedResult += res + "\n\n";
-          }
-          await fs.writeFile(path.join(resultsDir, resultFileName), combinedResult, "utf-8");
-          console.log(`  [OK] AIの結果を保存しました: prompts_results/${resultFileName}`);
-        }
-      }
-    }
   }
 }
 
