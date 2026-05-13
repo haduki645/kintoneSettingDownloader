@@ -93,6 +93,10 @@ export const resumeMain = async (resultDir: string, setting: Setting, promptTemp
     const mergeDir = path.join(appDir, "mergeFiles");
     await safeRunAsync({
       tryCallback: async () => {
+        // mergeFiles ディレクトリが存在するか確認
+        const exists = await fs.access(mergeDir).then(() => true).catch(() => false);
+        if (!exists) return;
+
         const files = await fs.readdir(mergeDir);
         const jsFiles = files.filter(f => f.endsWith(".js") && !f.endsWith(".min.js"));
 
