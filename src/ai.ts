@@ -7,16 +7,23 @@ import { safeRunAsync, safeRunAsyncGenerator } from "./utils";
 import { exec } from "child_process";
 
 /**
+ * AI API呼び出し用の初期化処理を管理するクロージャ
+ */
+const getInitPromise = (() => {
+  let initPromise: Promise<void> | null = null;
+  return (config: any) => {
+    if (!initPromise) {
+      initPromise = ensureLmStudioRunning(config);
+    }
+    return initPromise;
+  };
+})();
+
+/**
  * AI APIを呼び出す（ジェネレーターとしてトークンを逐次返す）
  */
 export async function* callAiApi(messages: any[], config: AiConfig): AsyncGenerator<string, string, void> {
-  // 初回呼び出し時にサーバーの起動を確認
-  if (!initPromise) {
-    initPromise = ensureLmStudioRunning(config);
-  }
-  await initPromise;
-
-  let fullContent = "";
+  await getInitPromise(config);
 
   const { baseUrl, model } = config;
   const response = await axios.post(`${baseUrl}/chat/completions`, {
@@ -31,26 +38,29 @@ export async function* callAiApi(messages: any[], config: AiConfig): AsyncGenera
 
   return yield* safeRunAsyncGenerator({
     tryCallback: async function* (): AsyncGenerator<string, string, void> {
-      for await (const chunk of response.data) {
-        const lines = chunk.toString().split("\n");
-        for (const line of lines) {
-          const trimmed = line.trim();
-          if (trimmed === "" || !trimmed.startsWith("data: ")) continue;
+      // 非同期ジェネレーター内で値を蓄積して返す
+      const processChunks = async function* (full: string = ""): AsyncGenerator<string, string, void> {
+        let currentFull = full;
+        for await (const chunk of response.data) {
+          const lines = chunk.toString().split("\n");
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (trimmed === "" || !trimmed.startsWith("data: ")) continue;
+            const dataStr = trimmed.slice(6).trim();
+            if (dataStr === "[DONE]") continue;
 
-          const dataStr = trimmed.slice(6).trim();
-          if (dataStr === "[DONE]") continue;
-
-          try {
-            const data = JSON.parse(dataStr);
-            const content = data.choices[0]?.delta?.content || "";
-            if (!content) continue;
-
-            fullContent += content;
-            yield content; // トークンを逐次返す
-          } catch (e) {}
+            try {
+              const data = JSON.parse(dataStr);
+              const content = data.choices[0]?.delta?.content || "";
+              if (!content) continue;
+              currentFull += content;
+              yield content;
+            } catch (e) {}
+          }
         }
-      }
-      return fullContent;
+        return currentFull;
+      };
+      return yield* processChunks();
     },
     catchCallback: async function* (error: any): AsyncGenerator<string, string, void> {
       const isConnError = error.code === 'ECONNREFUSED' || error.code === 'ENOTFOUND';
@@ -63,11 +73,6 @@ export async function* callAiApi(messages: any[], config: AiConfig): AsyncGenera
     }
   });
 }
-
-/**
- * AI API呼び出し用のヘルパー関数
- */
-let initPromise: Promise<void> | null = null;
 
 /**
  * LM Studioが起動しているか確認し、起動していなければ設定されたパスから起動を試める
@@ -125,22 +130,25 @@ const checkServer = async (baseUrl: string, model?: string): Promise<boolean> =>
       }
 
       // 2. 実際にリクエストが通るか確認（ECONNRESET対策）
-      try {
-        await axios.post(`${baseUrl}/chat/completions`, {
-          model: model || "ping-test",
-          messages: [{ role: "user", content: "ping" }],
-          max_tokens: 1
-        }, { timeout: 3000 });
-      } catch (postErr: any) {
-        // 接続エラーやリセットが発生した場合は異常とみなす
-        if (postErr.code === 'ECONNRESET' || postErr.code === 'ECONNREFUSED' || postErr.code === 'ETIMEDOUT' || !postErr.response) {
-          console.log(`[AI] サーバーからの応答が異常です (${postErr.code || "Timeout"})。再起動を試みます。`);
-          return false;
+      return await safeRunAsync({
+        tryCallback: async () => {
+          await axios.post(`${baseUrl}/chat/completions`, {
+            model: model || "ping-test",
+            messages: [{ role: "user", content: "ping" }],
+            max_tokens: 1
+          }, { timeout: 3000 });
+          return true;
+        },
+        catchCallback: async (postErr: any) => {
+          // 接続エラーやリセットが発生した場合は異常とみなす
+          if (postErr.code === 'ECONNRESET' || postErr.code === 'ECONNREFUSED' || postErr.code === 'ETIMEDOUT' || !postErr.response) {
+            console.log(`[AI] サーバーからの応答が異常です (${postErr.code || "Timeout"})。再起動を試みます。`);
+            return false;
+          }
+          // 400系エラーなどは「サーバー自体は応答している」とみなしてOKとする
+          return true;
         }
-        // 400系エラーなどは「サーバー自体は応答している」とみなしてOKとする
-      }
-
-      return true;
+      });
     },
     catchCallback: async () => false
   });

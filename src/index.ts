@@ -22,12 +22,10 @@ import { safeRunAsync } from "./utils";
 const main = async () => {
   const isResumeMode = process.argv.length > 2;
   const settingPath = path.join(process.cwd(), "setting.json");
-  let setting: Setting;
-
   const result = await safeRunAsync({
     tryCallback: async () => {
       const settingContent = await fs.readFile(settingPath, "utf-8");
-      setting = JSON.parse(settingContent);
+      const setting: Setting = JSON.parse(settingContent);
       if (!Array.isArray(setting.appIds)) {
         throw new Error("setting.json の appIds パラメータが配列ではありません。");
       }
@@ -40,12 +38,12 @@ const main = async () => {
   });
 
   if (!result.success) return;
-  setting = result.setting;
+  const { setting } = result;
 
   const promptTemplates = await loadPromptTemplates();
   const headers = getAuthHeaders();
   const baseResultDir = path.join(process.cwd(), "result");
-  
+
   // 過去の結果ディレクトリを取得
   const { maxCacheCount = 5 } = setting;
   const pastDirsNames = await getPastResultDirs(baseResultDir);
@@ -83,7 +81,7 @@ const main = async () => {
   const appNameCache: Record<string, string> = {};
 
   // Phase 1: 全アプリのファイルをダウンロード
-  await setting.appIds.reduce(async (promise, appId) => {
+  await setting.appIds.reduce(async (promise: Promise<void>, appId: number) => {
     await promise;
     await processApp(appId, setting, headers, resultDir, pastResultDirs, promptTemplates, appNameCache, true);
   }, Promise.resolve());
@@ -97,7 +95,7 @@ const main = async () => {
   // 古い結果を整理
   await cleanupOldResults(baseResultDir, maxCacheCount);
 
-  console.log(`\n=== すべてের処理が完了しました ===`);
+  console.log(`\n=== すべての処理が完了しました ===`);
 
   if (setting.workspaceConfig) {
     openWorkspace(path.join(resultDir, "result.code-workspace"));

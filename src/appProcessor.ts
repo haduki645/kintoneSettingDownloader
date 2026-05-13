@@ -84,7 +84,7 @@ export const resumeMain = async (resultDir: string, setting: Setting, promptTemp
     .slice(0, setting.maxCacheCount || 5)
     .map(name => path.join(baseResultDir, name));
 
-  await appDirs.reduce(async (promise, appDirName) => {
+  await appDirs.reduce(async (promise: Promise<void>, appDirName) => {
     await promise;
     const appId = parseInt(appDirName.split("_")[0]);
     const appDir = path.join(resultDir, appDirName);
@@ -96,7 +96,7 @@ export const resumeMain = async (resultDir: string, setting: Setting, promptTemp
         const files = await fs.readdir(mergeDir);
         const jsFiles = files.filter(f => f.endsWith(".js") && !f.endsWith(".min.js"));
 
-        await jsFiles.reduce(async (jsPromise, jsFile) => {
+        await jsFiles.reduce(async (jsPromise: Promise<void>, jsFile) => {
           await jsPromise;
           console.log(`[Resume] アプリ: ${appDirName}, ファイル: ${jsFile}`);
           const mergedContent = await fs.readFile(path.join(mergeDir, jsFile), "utf-8");
@@ -230,40 +230,36 @@ const handleLookups = async (
 
       const { lookup } = fieldDef;
       const relatedAppId = lookup.relatedApp?.app || "不明";
-      let relatedAppName = "不明";
       
-      if (relatedAppId !== "不明") {
-        if (appNameCache[relatedAppId]) {
-          relatedAppName = appNameCache[relatedAppId];
-        } else {
-          await safeRunAsync({
-            tryCallback: async () => {
-              const info = await fetchKintoneApi("/k/v1/app.json", Number(relatedAppId), headers);
-              relatedAppName = info.name;
-              appNameCache[relatedAppId] = relatedAppName;
-            },
-            catchCallback: async (e) => {
-              relatedAppName = "取得不可";
-              appNameCache[relatedAppId] = relatedAppName;
-              await writeErrorLog(appDir, `ルックアップ先アプリ情報 (ID: ${relatedAppId}) の取得に失敗しました。`, e);
-            }
-          });
-        }
-      }
+      const relatedAppName = await (async () => {
+        if (relatedAppId === "不明") return "不明";
+        if (appNameCache[relatedAppId]) return appNameCache[relatedAppId];
+
+        return await safeRunAsync({
+          tryCallback: async () => {
+            const info = await fetchKintoneApi("/k/v1/app.json", Number(relatedAppId), headers);
+            appNameCache[relatedAppId] = info.name;
+            return info.name;
+          },
+          catchCallback: async (e) => {
+            appNameCache[relatedAppId] = "取得不可";
+            await writeErrorLog(appDir, `ルックアップ先アプリ情報 (ID: ${relatedAppId}) の取得に失敗しました。`, e);
+            return "取得不可";
+          }
+        });
+      })();
       
       const mappings = lookup.fieldMappings || [];
       const rowCount = mappings.length || 1;
       const appUrl = relatedAppId !== "不明" ? `<a href="${KINTONE_BASE_URL}/k/${relatedAppId}/" target="_blank">${relatedAppName} (ID: ${relatedAppId})</a>` : `${relatedAppName} (ID: ${relatedAppId})`;
 
-      let rowHtml = `    <tr>\n      <td rowspan="${rowCount}">${prefix}${fieldCode}</td>\n` +
-        `      <td rowspan="${rowCount}">${appUrl}</td>\n      <td rowspan="${rowCount}">${lookup.relatedKeyField}</td>\n`;
+      const rowHtml = `    <tr>\n      <td rowspan="${rowCount}">${prefix}${fieldCode}</td>\n` +
+        `      <td rowspan="${rowCount}">${appUrl}</td>\n      <td rowspan="${rowCount}">${lookup.relatedKeyField}</td>\n` +
+        (mappings.length > 0
+          ? `      <td>${mappings[0].field}</td>\n      <td>${mappings[0].relatedField}</td>\n    </tr>\n` +
+            mappings.slice(1).map((m: any) => `    <tr>\n      <td>${m.field}</td>\n      <td>${m.relatedField}</td>\n    </tr>\n`).join("")
+          : `      <td>-</td>\n      <td>-</td>\n    </tr>\n`);
 
-      if (mappings.length > 0) {
-        rowHtml += `      <td>${mappings[0].field}</td>\n      <td>${mappings[0].relatedField}</td>\n    </tr>\n` +
-          mappings.slice(1).map((m: any) => `    <tr>\n      <td>${m.field}</td>\n      <td>${m.relatedField}</td>\n    </tr>\n`).join("");
-      } else {
-        rowHtml += `      <td>-</td>\n      <td>-</td>\n    </tr>\n`;
-      }
       return [rowHtml];
     }));
     return results.flat();
@@ -296,9 +292,9 @@ const handleCustomizeFiles = async (
   const types = ["js", "css"];
   const customizeDir = path.join(appDir, "customize");
 
-  await scopes.reduce(async (scopePromise, scope) => {
+  await scopes.reduce(async (scopePromise: Promise<void>, scope) => {
     await scopePromise;
-    await types.reduce(async (typePromise, type) => {
+    await types.reduce(async (typePromise: Promise<void>, type) => {
       await typePromise;
       const items = customizeInfo[scope]?.[type] || [];
 
@@ -399,7 +395,7 @@ const handleAiGeneration = async function* (
   const resultsDir = path.join(appDir, "prompts_results");
   await fs.mkdir(resultsDir, { recursive: true });
 
-  let aiMessages: any[] = [];
+  const aiMessages: any[] = [];
   const { enableAi, aiConfig } = setting;
   if (!enableAi || !aiConfig) return;
 
@@ -413,10 +409,13 @@ const handleAiGeneration = async function* (
 
     console.log(`  [AI] コードの初期解析を開始します...`);
     const analysisGen = callAiApi(aiMessages, aiConfig);
-    let firstResponse = "";
-    for await (const chunk of analysisGen) {
-      firstResponse += chunk;
-    }
+    const firstResponse = await (async () => {
+      const chunks: string[] = [];
+      for await (const chunk of analysisGen) {
+        chunks.push(chunk);
+      }
+      return chunks.join("");
+    })();
 
     if (firstResponse.startsWith("AI APIの呼び出しに失敗しました")) {
       console.error(`  [Error] AIの初期解析に失敗したため、アプリID: ${appId} のAI処理を中止します。`);
@@ -488,10 +487,15 @@ const handleAiGeneration = async function* (
       console.log(`  [AI] ${functionalName} の回答を生成中 (${i + 1}/${promptTemplates.length})...`);
 
       const markerGen = callAiApi(aiMessages, aiConfig);
-      let res = "";
-      for await (const chunk of markerGen) {
-        res += chunk;
-      }
+      
+      const res = await (async () => {
+        const chunks: string[] = [];
+        for await (const chunk of markerGen) {
+          chunks.push(chunk);
+        }
+        return chunks.join("");
+      })();
+      
       aiMessages.push({ role: "assistant", content: res });
 
       const individualResultFileName = `${functionalName}_${name}_result.md`;

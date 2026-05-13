@@ -27,7 +27,9 @@ export const generateLookupMd = (appName: string, appId: number, rows: string[])
 }
 
 export const generateViewMd = (appId: number, viewsInfo: any): string => {
-  let viewMdContent = `# [一覧設定 (アプリID: ${appId})](${KINTONE_BASE_URL}/k/admin/app/flow?app=${appId}#section=views)\n\n`;
+  const { views = {} } = viewsInfo;
+  const viewsArray = Object.values(views as Record<string, any>).sort((a, b) => Number(a.index) - Number(b.index));
+
   const style = `<style>\n` +
     `  table { border-collapse: collapse; width: 100%; font-size: 14px; }\n` +
     `  th, td { border: 1px solid #ddd; padding: 12px 8px; text-align: left; vertical-align: middle; }\n` +
@@ -35,37 +37,27 @@ export const generateViewMd = (appId: number, viewsInfo: any): string => {
     `  td { background-color: #fff; }\n` +
     `  tbody tr:hover td { background-color: #f9fafb; }\n` +
     `</style>\n\n`;
-  viewMdContent += style;
-  viewMdContent += `<table>\n`;
-  viewMdContent += `  <thead>\n`;
-  viewMdContent += `    <tr>\n`;
-  viewMdContent += `      <th>一覧名</th>\n`;
-  viewMdContent += `      <th>表示形式</th>\n`;
-  viewMdContent += `      <th>絞り込み条件</th>\n`;
-  viewMdContent += `      <th>並び替え条件</th>\n`;
-  viewMdContent += `    </tr>\n`;
-  viewMdContent += `  </thead>\n`;
-  viewMdContent += `  <tbody>\n`;
 
-  const { views } = viewsInfo;
-  const viewsArray = Object.values(views as Record<string, any>).sort((a, b) => Number(a.index) - Number(b.index));
+  const sections = [
+    `# [一覧設定 (アプリID: ${appId})](${KINTONE_BASE_URL}/k/admin/app/flow?app=${appId}#section=views)\n\n`,
+    style,
+    `<table>\n  <thead>\n    <tr>\n      <th>一覧名</th>\n      <th>表示形式</th>\n      <th>絞り込み条件</th>\n      <th>並び替え条件</th>\n    </tr>\n  </thead>\n  <tbody>\n`,
+    viewsArray.map(view => {
+      const { id, filterCond, sort, name, type } = view;
+      const viewUrl = `${KINTONE_BASE_URL}/k/${appId}/?view=${id}`;
+      const filterCondStr = filterCond ? `\`${filterCond}\`` : "なし";
+      const sortStr = sort ? `\`${sort}\`` : "なし";
+      return `    <tr>\n` +
+             `      <td><a href="${viewUrl}" target="_blank">${name}</a></td>\n` +
+             `      <td>${type}</td>\n` +
+             `      <td>${filterCondStr}</td>\n` +
+             `      <td>${sortStr}</td>\n` +
+             `    </tr>\n`;
+    }).join(""),
+    `  </tbody>\n</table>\n`
+  ];
 
-  viewMdContent += viewsArray.map(view => {
-    const { id, filterCond, sort, name, type } = view;
-    const viewUrl = `${KINTONE_BASE_URL}/k/${appId}/?view=${id}`;
-    const filterCondStr = filterCond ? `\`${filterCond}\`` : "なし";
-    const sortStr = sort ? `\`${sort}\`` : "なし";
-    return `    <tr>\n` +
-           `      <td><a href="${viewUrl}" target="_blank">${name}</a></td>\n` +
-           `      <td>${type}</td>\n` +
-           `      <td>${filterCondStr}</td>\n` +
-           `      <td>${sortStr}</td>\n` +
-           `    </tr>\n`;
-  }).join("");
-
-  viewMdContent += `  </tbody>\n`;
-  viewMdContent += `</table>\n`;
-  return viewMdContent;
+  return sections.join("");
 }
 
 export const generateAclMd = (appId: number, appAclInfo: any, recordAclInfo: any, fieldAclInfo: any): string => {
@@ -233,7 +225,6 @@ export const generateFormMd = (appId: number, fieldsInfo: any, layoutInfo: any):
     return acc;
   }, {} as Record<string, any>);
 
-  let formMdContent = `# [フォーム設定 (アプリID: ${appId})](${KINTONE_BASE_URL}/k/admin/app/flow?app=${appId}#section=form)\n\n`;
   const style = `<style>\n` +
     `  table { border-collapse: collapse; width: 100%; font-size: 14px; margin-bottom: 20px; }\n` +
     `  th, td { border: 1px solid #ddd; padding: 12px 8px; text-align: left; vertical-align: middle; }\n` +
@@ -241,11 +232,8 @@ export const generateFormMd = (appId: number, fieldsInfo: any, layoutInfo: any):
     `  td { background-color: #fff; }\n` +
     `  tbody tr:hover td { background-color: #f9fafb; }\n` +
     `</style>\n\n`;
-  formMdContent += style;
 
-  formMdContent += `<table>\n  <thead>\n    <tr>\n      <th>場所</th>\n      <th>フィールド名</th>\n      <th>フィールドコード</th>\n      <th>タイプ</th>\n      <th>必須</th>\n      <th>設定詳細</th>\n    </tr>\n  </thead>\n  <tbody>\n`;
-
-  const renderFieldRows = (fields: any[], location: string) => {
+  const renderFieldRows = (fields: any[], location: string): string => {
     return fields.map(field => {
       const { type, label, elementId, code } = field;
       const rowHtml = `    <tr>\n      <td>${location}</td>\n`;
@@ -266,50 +254,45 @@ export const generateFormMd = (appId: number, fieldsInfo: any, layoutInfo: any):
         return rowHtml + `      <td>不明</td>\n      <td>${code}</td>\n      <td>${type}</td>\n      <td>-</td>\n      <td>-</td>\n    </tr>\n`;
       }
 
-      const detailParts: string[] = [];
-      if (prop.options) {
-        const options = Object.values(prop.options as Record<string, any>)
-          .sort((a, b) => Number(a.index) - Number(b.index))
-          .map(opt => opt.label)
-          .join(", ");
-        detailParts.push(`選択肢: ${options}`);
-      }
-      if (prop.expression) {
-        detailParts.push(`計算式: <code>${prop.expression}</code>`);
-      }
-      if (prop.lookup) {
-        const { lookup } = prop;
-        detailParts.push(`ルックアップ先: アプリID ${lookup.relatedApp.app} (キー: ${lookup.relatedKeyField})`);
-      }
+      const detailParts: string[] = [
+        prop.options && `選択肢: ${Object.values(prop.options as Record<string, any>).sort((a, b) => Number(a.index) - Number(b.index)).map(opt => opt.label).join(", ")}`,
+        prop.expression && `計算式: <code>${prop.expression}</code>`,
+        prop.lookup && `ルックアップ先: アプリID ${prop.lookup.relatedApp.app} (キー: ${prop.lookup.relatedKeyField})`
+      ].filter(Boolean) as string[];
+
       const details = detailParts.join('<br>') || '-';
 
       return rowHtml + `      <td>${prop.label || '設定なし'}</td>\n      <td>${code}</td>\n      <td>${prop.type}</td>\n      <td>${prop.required ? '○' : '-'}</td>\n      <td>${details}</td>\n    </tr>\n`;
     }).join("");
   };
 
-  formMdContent += layout.map((section: any) => {
-    const { type, code: sectionCode, layout: sectionLayout, fields } = section;
-    if (type === 'GROUP') {
-      const groupProp = properties[sectionCode];
-      const groupLabel = groupProp ? groupProp.label : sectionCode;
-      return sectionLayout.map((row: any) => renderFieldRows(row.fields, `グループ: ${groupLabel}`)).join("");
-    }
-    
-    if (type === 'ROW') {
-      return renderFieldRows(fields, ``);
-    }
-    
-    if (type === 'SUBTABLE') {
-      const tableProp = properties[sectionCode];
-      const tableLabel = tableProp ? tableProp.label : sectionCode;
-      return renderFieldRows(fields, `テーブル: ${tableLabel}`);
-    }
-    
-    return "";
-  }).join("");
+  const sections = [
+    `# [フォーム設定 (アプリID: ${appId})](${KINTONE_BASE_URL}/k/admin/app/flow?app=${appId}#section=form)\n\n`,
+    style,
+    `<table>\n  <thead>\n    <tr>\n      <th>場所</th>\n      <th>フィールド名</th>\n      <th>フィールドコード</th>\n      <th>タイプ</th>\n      <th>必須</th>\n      <th>設定詳細</th>\n    </tr>\n  </thead>\n  <tbody>\n`,
+    layout.map((section: any) => {
+      const { type, code: sectionCode, layout: sectionLayout, fields } = section;
+      if (type === 'GROUP') {
+        const groupProp = properties[sectionCode];
+        const groupLabel = groupProp ? groupProp.label : sectionCode;
+        return sectionLayout.map((row: any) => renderFieldRows(row.fields, `グループ: ${groupLabel}`)).join("");
+      }
+      
+      if (type === 'ROW') {
+        return renderFieldRows(fields, ``);
+      }
+      
+      if (type === 'SUBTABLE') {
+        const tableProp = properties[sectionCode];
+        const tableLabel = tableProp ? tableProp.label : sectionCode;
+        return renderFieldRows(fields, `テーブル: ${tableLabel}`);
+      }
+      
+      return "";
+    }).join(""),
+    `  </tbody>\n</table>\n`
+  ];
 
-  formMdContent += `  </tbody>\n</table>\n`;
-
-  return formMdContent;
+  return sections.join("");
 }
 
