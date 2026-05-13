@@ -39,10 +39,11 @@ export async function fetchKintoneApi(
   const url = `${KINTONE_BASE_URL}${endpoint}?${paramName}=${appId}`;
   
   try {
-    const response = await axios.get(url, { headers });
-    return response.data;
+    const { data } = await axios.get(url, { headers });
+    return data;
   } catch (error: any) {
-    const errorDetail = error.response?.data || error.message;
+    const { response, message } = error;
+    const errorDetail = response?.data || message;
     console.error(
       `[Error] APIリクエスト失敗 (${endpoint}, app: ${appId}):`,
       errorDetail,
@@ -61,13 +62,14 @@ export async function downloadKintoneFile(
   const url = `${KINTONE_BASE_URL}/k/v1/file.json?fileKey=${fileKey}`;
   
   try {
-    const response = await axios.get(url, {
+    const { data } = await axios.get(url, {
       headers,
       responseType: "arraybuffer", // バイナリデータとして取得
     });
-    return Buffer.from(response.data);
+    return Buffer.from(data);
   } catch (error: any) {
-    const errorDetail = error.response?.data || error.message;
+    const { response, message } = error;
+    const errorDetail = response?.data || message;
     console.error(
       `[Error] ファイルダウンロード失敗 (fileKey: ${fileKey}):`,
       errorDetail,

@@ -15,6 +15,7 @@ import {
   generateNotificationMd,
   generateFormMd,
 } from "./mdGenerators";
+import { toSafeFileName } from "./utils";
 import {
   getPastResultDirs,
   minifyJs,
@@ -125,10 +126,10 @@ export async function processApp(
       fetchKintoneApi("/k/v1/app/customize.json", appId, headers),
     ]);
 
-    const appName = appInfo.name;
+    const { name: appName } = appInfo;
     if (!appName) throw new Error("アプリ名が取得できませんでした。");
 
-    const safeAppName = appName.replace(/[\\/:*?"<>|]/g, "_");
+    const safeAppName = toSafeFileName(appName);
     const appDir = path.join(resultDir, `${appId}_${safeAppName}`);
     const jsonDir = path.join(appDir, "json");
     await fs.mkdir(jsonDir, { recursive: true });
@@ -207,42 +208,44 @@ async function handleLookups(appId: number, appName: string, appDir: string, fie
     const results = await Promise.all(propertyEntries.map(async ([fieldCode, fieldDef]) => {
       if (fieldDef.type === "SUBTABLE" && fieldDef.fields) {
         return await extractLookups(fieldDef.fields, `${prefix}${fieldCode} (テーブル) &gt; `);
-      } else if (fieldDef.lookup) {
-        const lookup = fieldDef.lookup;
-        const relatedAppId = lookup.relatedApp?.app || "不明";
-        let relatedAppName = "不明";
-        if (relatedAppId !== "不明") {
-          if (appNameCache[relatedAppId]) {
-            relatedAppName = appNameCache[relatedAppId];
-          } else {
-            try {
-              const info = await fetchKintoneApi("/k/v1/app.json", Number(relatedAppId), headers);
-              relatedAppName = info.name;
-              appNameCache[relatedAppId] = relatedAppName;
-            } catch (e) {
-              relatedAppName = "取得不可";
-              appNameCache[relatedAppId] = relatedAppName;
-              await writeErrorLog(appDir, `ルックアップ先アプリ情報 (ID: ${relatedAppId}) の取得に失敗しました。`, e);
-            }
+      }
+      
+      if (!fieldDef.lookup) return [];
+
+      const { lookup } = fieldDef;
+      const relatedAppId = lookup.relatedApp?.app || "不明";
+      let relatedAppName = "不明";
+      
+      if (relatedAppId !== "不明") {
+        if (appNameCache[relatedAppId]) {
+          relatedAppName = appNameCache[relatedAppId];
+        } else {
+          try {
+            const info = await fetchKintoneApi("/k/v1/app.json", Number(relatedAppId), headers);
+            relatedAppName = info.name;
+            appNameCache[relatedAppId] = relatedAppName;
+          } catch (e) {
+            relatedAppName = "取得不可";
+            appNameCache[relatedAppId] = relatedAppName;
+            await writeErrorLog(appDir, `ルックアップ先アプリ情報 (ID: ${relatedAppId}) の取得に失敗しました。`, e);
           }
         }
-        const mappings = lookup.fieldMappings || [];
-        const rowCount = mappings.length || 1;
-
-        const appUrl = relatedAppId !== "不明" ? `<a href="${KINTONE_BASE_URL}/k/${relatedAppId}/" target="_blank">${relatedAppName} (ID: ${relatedAppId})</a>` : `${relatedAppName} (ID: ${relatedAppId})`;
-
-        let rowHtml = `    <tr>\n      <td rowspan="${rowCount}">${prefix}${fieldCode}</td>\n` +
-          `      <td rowspan="${rowCount}">${appUrl}</td>\n      <td rowspan="${rowCount}">${lookup.relatedKeyField}</td>\n`;
-
-        if (mappings.length > 0) {
-          rowHtml += `      <td>${mappings[0].field}</td>\n      <td>${mappings[0].relatedField}</td>\n    </tr>\n` +
-            mappings.slice(1).map((m: any) => `    <tr>\n      <td>${m.field}</td>\n      <td>${m.relatedField}</td>\n    </tr>\n`).join("");
-        } else {
-          rowHtml += `      <td>-</td>\n      <td>-</td>\n    </tr>\n`;
-        }
-        return [rowHtml];
       }
-      return [];
+      
+      const mappings = lookup.fieldMappings || [];
+      const rowCount = mappings.length || 1;
+      const appUrl = relatedAppId !== "不明" ? `<a href="${KINTONE_BASE_URL}/k/${relatedAppId}/" target="_blank">${relatedAppName} (ID: ${relatedAppId})</a>` : `${relatedAppName} (ID: ${relatedAppId})`;
+
+      let rowHtml = `    <tr>\n      <td rowspan="${rowCount}">${prefix}${fieldCode}</td>\n` +
+        `      <td rowspan="${rowCount}">${appUrl}</td>\n      <td rowspan="${rowCount}">${lookup.relatedKeyField}</td>\n`;
+
+      if (mappings.length > 0) {
+        rowHtml += `      <td>${mappings[0].field}</td>\n      <td>${mappings[0].relatedField}</td>\n    </tr>\n` +
+          mappings.slice(1).map((m: any) => `    <tr>\n      <td>${m.field}</td>\n      <td>${m.relatedField}</td>\n    </tr>\n`).join("");
+      } else {
+        rowHtml += `      <td>-</td>\n      <td>-</td>\n    </tr>\n`;
+      }
+      return [rowHtml];
     }));
     return results.flat();
   };
@@ -274,17 +277,19 @@ async function handleCustomizeFiles(
       const items = customizeInfo[scope]?.[type] || [];
 
       const filesToMerge = (await Promise.all(items.map(async (item: any) => {
-        if (item.type === "FILE" && item.file?.fileKey) {
-          const targetDir = path.join(customizeDir, scope, type);
-          await fs.mkdir(targetDir, { recursive: true });
-          const targetPath = path.join(targetDir, item.file.name.replace(/[\\/:*?"<>|]/g, "_"));
-          try {
-            const data = await downloadKintoneFile(item.file.fileKey, headers);
-            await fs.writeFile(targetPath, data);
-            return targetPath;
-          } catch (e) {
-            await writeErrorLog(appDir, `ファイルのダウンロードまたは保存に失敗しました: ${item.file.name}`, e);
-          }
+        const { type: itemType, file } = item;
+        if (itemType !== "FILE" || !file?.fileKey) return null;
+
+        const { name: fileName, fileKey } = file;
+        const targetDir = path.join(customizeDir, scope, type);
+        await fs.mkdir(targetDir, { recursive: true });
+        const targetPath = path.join(targetDir, toSafeFileName(fileName));
+        try {
+          const data = await downloadKintoneFile(fileKey, headers);
+          await fs.writeFile(targetPath, data);
+          return targetPath;
+        } catch (e) {
+          await writeErrorLog(appDir, `ファイルのダウンロードまたは保存に失敗しました: ${fileName}`, e);
         }
         return null;
       }))).filter((p): p is string => p !== null);
@@ -351,119 +356,119 @@ async function* handleAiGeneration(
 ): AsyncGenerator<string, void, void> {
   const markerRegex = /#仕様書@\{(.+?)\}/g;
   const matches: MarkerMatch[] = Array.from(mergedContent.matchAll(markerRegex)).map(m => {
-    const functionalName = m[1];
-    const marker = m[0];
-    const index = m.index || 0;
+    const [marker, functionalName] = m;
+    const { index = 0 } = m;
     const lineNumber = mergedContent.substring(0, index).split("\n").length;
     return { functionalName, marker, lineNumber };
   });
 
-  if (matches.length > 0) {
-    const resultsDir = path.join(appDir, "prompts_results");
-    await fs.mkdir(resultsDir, { recursive: true });
+  if (matches.length === 0) return;
 
-    let aiMessages: any[] = [];
-    if (setting.enableAi && setting.aiConfig) {
-      const aiConfig = setting.aiConfig;
-      const hasAiTemplates = promptTemplates.some(pt => !pt.name.startsWith("00_"));
+  const resultsDir = path.join(appDir, "prompts_results");
+  await fs.mkdir(resultsDir, { recursive: true });
 
-      if (hasAiTemplates) {
-        aiMessages.push({
-          role: "user",
-          content: `以下のJavaScriptコードを解析対象として読み込んでください。以降のメッセージで、このコード内の特定の箇所についての設計書作成を個別に依頼します。\n\n\`\`\`javascript\n${mergedContent}\n\`\`\``
-        });
+  let aiMessages: any[] = [];
+  const { enableAi, aiConfig } = setting;
+  if (!enableAi || !aiConfig) return;
 
-        console.log(`  [AI] コードの初期解析を開始します...`);
-        const analysisGen = callAiApi(aiMessages, aiConfig);
-        let firstResponse = "";
-        for await (const chunk of analysisGen) {
-          firstResponse += chunk;
-        }
+  const hasAiTemplates = promptTemplates.some(({ name }) => !name.startsWith("00_"));
 
-        if (firstResponse.startsWith("AI APIの呼び出しに失敗しました")) {
-          console.error(`  [Error] AIの初期解析に失敗したため、アプリID: ${appId} のAI処理を中止します。`);
-          yield firstResponse;
-          return;
-        }
-        aiMessages.push({ role: "assistant", content: firstResponse });
-        yield "初期解析完了";
+  if (hasAiTemplates) {
+    aiMessages.push({
+      role: "user",
+      content: `以下のJavaScriptコードを解析対象として読み込んでください。以降のメッセージで、このコード内の特定の箇所についての設計書作成を個別に依頼します。\n\n\`\`\`javascript\n${mergedContent}\n\`\`\``
+    });
+
+    console.log(`  [AI] コードの初期解析を開始します...`);
+    const analysisGen = callAiApi(aiMessages, aiConfig);
+    let firstResponse = "";
+    for await (const chunk of analysisGen) {
+      firstResponse += chunk;
+    }
+
+    if (firstResponse.startsWith("AI APIの呼び出しに失敗しました")) {
+      console.error(`  [Error] AIの初期解析に失敗したため、アプリID: ${appId} のAI処理を中止します。`);
+      yield firstResponse;
+      return;
+    }
+    aiMessages.push({ role: "assistant", content: firstResponse });
+    yield "初期解析完了";
+  }
+
+  await matches.reduce(async (promise, { functionalName, lineNumber }) => {
+    await promise;
+    const markerLink = `[${lineNumber}行目へ移動](../mergeFiles/${outputFileName}#L${lineNumber})`;
+    const fullPrompt = promptTemplates.map(t =>
+      t.content.split("{{fileName}}").join(outputFileName).split("{{marker}}").join(markerLink)
+        .split("{{functionalName}}").join(functionalName).split("{{content}}").join(mergedContent)
+    ).join("\n\n---\n\n");
+
+    const resultFileName = `${functionalName}_result.md`;
+    const resultFilePath = path.join(resultsDir, resultFileName);
+
+    try {
+      await fs.access(resultFilePath);
+      console.log(`  [Skip] ${functionalName} の回答は既に存在します。`);
+      return;
+    } catch (e) { }
+
+    const appFolderName = `${appId}_${safeAppName}`;
+    const cached = await getCachedResult(pastResultDirs, appFolderName, `${functionalName}.md`, resultFileName, fullPrompt);
+
+    if (cached) {
+      await fs.writeFile(path.join(resultsDir, resultFileName), cached, "utf-8");
+      aiMessages.push({ role: "assistant", content: cached });
+      console.log(`  [Cache] ${functionalName} の回答を再利用しました。`);
+
+      const parts = cached.split("\n\n").filter(p => p.trim().length > 0);
+      if (parts.length === promptTemplates.length) {
+        await Promise.all(promptTemplates.map((pt, i) => {
+          const individualResultFileName = `${functionalName}_${pt.name}_result.md`;
+          return fs.writeFile(path.join(resultsDir, individualResultFileName), parts[i], "utf-8");
+        }));
+      }
+      return;
+    }
+
+    const results = await promptTemplates.reduce(async (ptPromise, { name, content }, i) => {
+      const currentResults = await ptPromise;
+      const markerLink = `[${lineNumber}行目へ移動](../mergeFiles/${outputFileName}#L${lineNumber})`;
+
+      if (name.startsWith("00_")) {
+        const res = content
+          .split("{{fileName}}").join(outputFileName)
+          .split("{{marker}}").join(markerLink)
+          .split("{{functionalName}}").join(functionalName)
+          .split("{{content}}").join(mergedContent);
+
+        const individualResultFileName = `${functionalName}_${name}_result.md`;
+        await fs.writeFile(path.join(resultsDir, individualResultFileName), res, "utf-8");
+        return [...currentResults, res];
       }
 
-      await matches.reduce(async (promise, { functionalName, marker, lineNumber }) => {
-        await promise;
-        const markerLink = `[${lineNumber}行目へ移動](../mergeFiles/${outputFileName}#L${lineNumber})`;
-        const fullPrompt = promptTemplates.map(t =>
-          t.content.split("{{fileName}}").join(outputFileName).split("{{marker}}").join(markerLink)
-            .split("{{functionalName}}").join(functionalName).split("{{content}}").join(mergedContent)
-        ).join("\n\n---\n\n");
+      const prompt = content
+        .split("{{fileName}}").join(outputFileName).split("{{marker}}").join(markerLink)
+        .split("{{functionalName}}").join(functionalName).split("{{content}}").join("提示済みのコードを参照してください。");
 
-        const resultFileName = `${functionalName}_result.md`;
-        const resultFilePath = path.join(resultsDir, resultFileName);
+      aiMessages.push({ role: "user", content: prompt });
+      console.log(`  [AI] ${functionalName} の回答を生成中 (${i + 1}/${promptTemplates.length})...`);
 
-        try {
-          await fs.access(resultFilePath);
-          console.log(`  [Skip] ${functionalName} の回答は既に存在します。`);
-          return;
-        } catch (e) { }
+      const markerGen = callAiApi(aiMessages, aiConfig);
+      let res = "";
+      for await (const chunk of markerGen) {
+        res += chunk;
+      }
+      aiMessages.push({ role: "assistant", content: res });
 
-        const appFolderName = `${appId}_${safeAppName}`;
-        const cached = await getCachedResult(pastResultDirs, appFolderName, `${functionalName}.md`, resultFileName, fullPrompt);
+      const individualResultFileName = `${functionalName}_${name}_result.md`;
+      await fs.writeFile(path.join(resultsDir, individualResultFileName), res, "utf-8");
 
-        if (cached) {
-          await fs.writeFile(path.join(resultsDir, resultFileName), cached, "utf-8");
-          aiMessages.push({ role: "assistant", content: cached });
-          console.log(`  [Cache] ${functionalName} の回答を再利用しました。`);
+      return [...currentResults, res];
+    }, Promise.resolve([] as string[]));
 
-          const parts = cached.split("\n\n").filter(p => p.trim().length > 0);
-          if (parts.length === promptTemplates.length) {
-            await Promise.all(promptTemplates.map((pt, i) => {
-              const individualResultFileName = `${functionalName}_${pt.name}_result.md`;
-              return fs.writeFile(path.join(resultsDir, individualResultFileName), parts[i], "utf-8");
-            }));
-          }
-        } else {
-          const results = await promptTemplates.reduce(async (ptPromise, pt, i) => {
-            const currentResults = await ptPromise;
-            const markerLink = `[${lineNumber}行目へ移動](../mergeFiles/${outputFileName}#L${lineNumber})`;
-
-            if (pt.name.startsWith("00_")) {
-              const res = pt.content
-                .split("{{fileName}}").join(outputFileName)
-                .split("{{marker}}").join(markerLink)
-                .split("{{functionalName}}").join(functionalName)
-                .split("{{content}}").join(mergedContent);
-
-              const individualResultFileName = `${functionalName}_${pt.name}_result.md`;
-              await fs.writeFile(path.join(resultsDir, individualResultFileName), res, "utf-8");
-              return [...currentResults, res];
-            }
-
-            const prompt = pt.content
-              .split("{{fileName}}").join(outputFileName).split("{{marker}}").join(markerLink)
-              .split("{{functionalName}}").join(functionalName).split("{{content}}").join("提示済みのコードを参照してください。");
-
-            aiMessages.push({ role: "user", content: prompt });
-            console.log(`  [AI] ${functionalName} の回答を生成中 (${i + 1}/${promptTemplates.length})...`);
-
-            const markerGen = callAiApi(aiMessages, aiConfig);
-            let res = "";
-            for await (const chunk of markerGen) {
-              res += chunk;
-            }
-            aiMessages.push({ role: "assistant", content: res });
-
-            const individualResultFileName = `${functionalName}_${pt.name}_result.md`;
-            await fs.writeFile(path.join(resultsDir, individualResultFileName), res, "utf-8");
-
-            return [...currentResults, res];
-          }, Promise.resolve([] as string[]));
-
-          const combinedResult = results.join("\n\n") + "\n\n";
-          await fs.writeFile(path.join(resultsDir, resultFileName), combinedResult, "utf-8");
-          console.log(`  [OK] AIの結果を保存しました: prompts_results/${resultFileName}`);
-        }
-      }, Promise.resolve());
-      yield "AI処理完了";
-    }
-  }
+    const combinedResult = results.join("\n\n") + "\n\n";
+    await fs.writeFile(path.join(resultsDir, resultFileName), combinedResult, "utf-8");
+    console.log(`  [OK] AIの結果を保存しました: prompts_results/${resultFileName}`);
+  }, Promise.resolve());
+  yield "AI処理完了";
 }

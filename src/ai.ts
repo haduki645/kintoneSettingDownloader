@@ -19,8 +19,9 @@ export async function* callAiApi(messages: any[], config: AiConfig): AsyncGenera
 
   let fullContent = "";
   try {
-    const response = await axios.post(`${config.baseUrl}/chat/completions`, {
-      model: config.model,
+    const { baseUrl, model } = config;
+    const response = await axios.post(`${baseUrl}/chat/completions`, {
+      model: model,
       messages: messages,
       temperature: 0.7,
       stream: true, // ストリーミングを有効化
@@ -32,20 +33,22 @@ export async function* callAiApi(messages: any[], config: AiConfig): AsyncGenera
     for await (const chunk of response.data) {
       const lines = chunk.toString().split("\n");
       for (const line of lines) {
-        if (line.trim() === "") continue;
-        if (line.startsWith("data: ")) {
-          const dataStr = line.slice(6).trim();
-          if (dataStr === "[DONE]") continue;
-          try {
-            const data = JSON.parse(dataStr);
-            const content = data.choices[0]?.delta?.content || "";
-            if (content) {
-              fullContent += content;
-              yield content; // トークンを逐次返す
-            }
-          } catch (e) {
-            // パース失敗（不完全なJSONなど）は無視して次を待つ
-          }
+        const trimmed = line.trim();
+        if (trimmed === "") continue;
+        if (!trimmed.startsWith("data: ")) continue;
+
+        const dataStr = trimmed.slice(6).trim();
+        if (dataStr === "[DONE]") continue;
+
+        try {
+          const data = JSON.parse(dataStr);
+          const content = data.choices[0]?.delta?.content || "";
+          if (!content) continue;
+
+          fullContent += content;
+          yield content; // トークンを逐次返す
+        } catch (e) {
+          // パース失敗（不完全なJSONなど）は無視して次を待つ
         }
       }
     }
@@ -67,22 +70,23 @@ export async function* callAiApi(messages: any[], config: AiConfig): AsyncGenera
  * LM Studioが起動しているか確認し、起動していなければ設定されたパスから起動を試みる
  */
 async function ensureLmStudioRunning(config: AiConfig) {
+  const { baseUrl, model, lmStudioPath } = config;
   console.log("[AI] APIサーバーの起動状態を確認中...");
-  const isUp = await checkServer(config.baseUrl, config.model);
+  const isUp = await checkServer(baseUrl, model);
   if (isUp) {
     console.log("[AI] APIサーバーは正常に応答しています。");
     return;
   }
 
-  if (!config.lmStudioPath) {
+  if (!lmStudioPath) {
     console.warn("[AI] APIサーバーが起動していません。また、setting.json に lmStudioPath が設定されていないため、自動起動できません。");
     return;
   }
 
   try {
-    console.log(`[AI] APIサーバーが見つかりません。LM Studioを起動します: ${config.lmStudioPath}`);
+    console.log(`[AI] APIサーバーが見つかりません。LM Studioを起動します: ${lmStudioPath}`);
     // Windowsのstartコマンドを使用してGUIアプリを起動
-    exec(`start "" "${config.lmStudioPath}"`, (error) => {
+    exec(`start "" "${lmStudioPath}"`, (error) => {
       if (error) {
         console.error("[AI] LM Studioの起動コマンド実行中にエラーが発生しました:", error);
       }
@@ -95,7 +99,7 @@ async function ensureLmStudioRunning(config: AiConfig) {
       if (isStarted) return true;
 
       await new Promise(resolve => setTimeout(resolve, 2000));
-      return await checkServer(config.baseUrl);
+      return await checkServer(baseUrl);
     }, Promise.resolve(false));
 
     if (started) {

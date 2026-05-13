@@ -1,14 +1,13 @@
 import fs from "fs/promises";
 import path from "path";
 import { minify } from "terser";
+import { formatTimestamp, errorToString } from "./utils";
 
 /**
  * タイムスタンプ付きのディレクトリ名を取得する
  */
 export function getTimestampedDirName(): string {
-  const now = new Date();
-  const pad = (n: number) => n.toString().padStart(2, "0");
-  return `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+  return formatTimestamp(new Date());
 }
 
 /**
@@ -32,14 +31,12 @@ export async function getPastResultDirs(baseDir: string): Promise<string[]> {
  */
 export async function cleanupOldResults(baseDir: string, maxCacheCount: number) {
   const dirs = await getPastResultDirs(baseDir);
-  if (dirs.length > maxCacheCount) {
-    const toDelete = dirs.slice(maxCacheCount);
-    await Promise.all(toDelete.map(async dirName => {
-      const fullPath = path.join(baseDir, dirName);
-      await fs.rm(fullPath, { recursive: true, force: true });
-      console.log(`[Info] 古い結果フォルダを削除しました: ${dirName}`);
-    }));
-  }
+  const toDelete = dirs.slice(maxCacheCount);
+  
+  await Promise.all(toDelete.map(async dirName => {
+    await fs.rm(path.join(baseDir, dirName), { recursive: true, force: true });
+    console.log(`[Info] 古い結果フォルダを削除しました: ${dirName}`);
+  }));
 }
 
 /**
@@ -47,9 +44,9 @@ export async function cleanupOldResults(baseDir: string, maxCacheCount: number) 
  */
 export async function minifyJs(content: string, outputPath: string) {
   try {
-    const minified = await minify(content);
-    if (minified.code) {
-      await fs.writeFile(outputPath, minified.code, "utf-8");
+    const { code } = await minify(content);
+    if (code) {
+      await fs.writeFile(outputPath, code, "utf-8");
       return true;
     }
   } catch (minifyErr) {
@@ -63,16 +60,14 @@ export async function minifyJs(content: string, outputPath: string) {
  */
 export async function writeErrorLog(resultDir: string, message: string, error?: any) {
   const logPath = path.join(resultDir, "error.log");
-  const now = new Date().toLocaleString("ja-JP");
-  let logContent = `[${now}] ${message}\n`;
-  if (error) {
-    if (error instanceof Error) {
-      logContent += `${error.stack || error.message}\n`;
-    } else {
-      logContent += `${JSON.stringify(error, null, 2)}\n`;
-    }
-  }
-  logContent += "--------------------------------------------------\n";
+  const nowStr = new Date().toLocaleString("ja-JP");
+  
+  const logContent = [
+    `[${nowStr}] ${message}`,
+    error ? errorToString(error) : null,
+    "--------------------------------------------------\n"
+  ].filter(Boolean).join("\n");
+
   try {
     await fs.appendFile(logPath, logContent, "utf-8");
   } catch (err) {

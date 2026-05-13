@@ -40,7 +40,7 @@ async function main() {
   const baseResultDir = path.join(process.cwd(), "result");
   
   // 過去の結果ディレクトリを取得
-  const maxCacheCount = setting.maxCacheCount || 5;
+  const { maxCacheCount = 5 } = setting;
   const pastDirsNames = await getPastResultDirs(baseResultDir);
 
   if (isResumeMode) {
@@ -63,10 +63,11 @@ async function main() {
   await fs.mkdir(resultDir, { recursive: true });
   await fs.writeFile(path.join(resultDir, "readme.md"), getReadmeContent(), "utf-8");
 
-  if (setting.workspaceConfig) {
+  const { workspaceConfig } = setting;
+  if (workspaceConfig) {
     await fs.writeFile(
       path.join(resultDir, "result.code-workspace"),
-      JSON.stringify(setting.workspaceConfig, null, 2),
+      JSON.stringify(workspaceConfig, null, 2),
       "utf-8"
     );
     console.log(`[OK] result.code-workspace を作成しました。`);
@@ -81,7 +82,8 @@ async function main() {
   }, Promise.resolve());
 
   // Phase 2: 全アプリのAI解析を一括実行
-  if (setting.enableAi) {
+  const { enableAi } = setting;
+  if (enableAi) {
     await resumeMain(resultDir, setting, promptTemplates);
   }
 
