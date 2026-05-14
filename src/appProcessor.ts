@@ -38,6 +38,9 @@ export const loadPromptTemplates = async (): Promise<PromptTemplate[]> => {
         content: await fs.readFile(path.join(promptTemplatesDir, f), "utf-8")
       })));
       promptTemplates.push(...templates);
+    },
+    catchCallback: async () => {
+      // ディレクトリが存在しない場合は無視して個別プロンプトの読み込みへ
     }
   });
 
@@ -438,19 +441,25 @@ const handleAiGeneration = async function* (
         .split("{{functionalName}}").join(functionalName).split("{{content}}").join(mergedContent)
     ).join("\n\n---\n\n");
 
-    const resultFileName = `${functionalName}_result.md`;
+    const safeFunctionalName = toSafeFileName(functionalName);
+    const resultFileName = `${safeFunctionalName}_result.md`;
     const resultFilePath = path.join(resultsDir, resultFileName);
 
-    await safeRunAsync({
+    const exists = await safeRunAsync({
       tryCallback: async () => {
         await fs.access(resultFilePath);
-        console.log(`  [Skip] ${functionalName} の回答は既に存在します。`);
-        return;
-      }
+        return true;
+      },
+      catchCallback: async () => false
     });
 
+    if (exists) {
+      console.log(`  [Skip] ${functionalName} の回答は既に存在します。`);
+      return;
+    }
+
     const appFolderName = `${appId}_${safeAppName}`;
-    const cached = await getCachedResult(pastResultDirs, appFolderName, `${functionalName}.md`, resultFileName, fullPrompt);
+    const cached = await getCachedResult(pastResultDirs, appFolderName, `${safeFunctionalName}.md`, resultFileName, fullPrompt);
 
     if (cached) {
       await fs.writeFile(path.join(resultsDir, resultFileName), cached, "utf-8");
@@ -460,7 +469,7 @@ const handleAiGeneration = async function* (
       const parts = cached.split("\n\n").filter(p => p.trim().length > 0);
       if (parts.length === promptTemplates.length) {
         await Promise.all(promptTemplates.map((pt, i) => {
-          const individualResultFileName = `${functionalName}_${pt.name}_result.md`;
+          const individualResultFileName = `${safeFunctionalName}_${pt.name}_result.md`;
           return fs.writeFile(path.join(resultsDir, individualResultFileName), parts[i], "utf-8");
         }));
       }
@@ -478,7 +487,7 @@ const handleAiGeneration = async function* (
           .split("{{functionalName}}").join(functionalName)
           .split("{{content}}").join(mergedContent);
 
-        const individualResultFileName = `${functionalName}_${name}_result.md`;
+        const individualResultFileName = `${safeFunctionalName}_${name}_result.md`;
         await fs.writeFile(path.join(resultsDir, individualResultFileName), res, "utf-8");
         return [...currentResults, res];
       }
@@ -502,7 +511,7 @@ const handleAiGeneration = async function* (
       
       aiMessages.push({ role: "assistant", content: res });
 
-      const individualResultFileName = `${functionalName}_${name}_result.md`;
+      const individualResultFileName = `${safeFunctionalName}_${name}_result.md`;
       await fs.writeFile(path.join(resultsDir, individualResultFileName), res, "utf-8");
 
       return [...currentResults, res];
