@@ -257,7 +257,8 @@ export const generateFormMd = (appId: number, fieldsInfo: any, layoutInfo: any):
       const detailParts: string[] = [
         prop.options && `選択肢: ${Object.values(prop.options as Record<string, any>).sort((a, b) => Number(a.index) - Number(b.index)).map(opt => opt.label).join(", ")}`,
         prop.expression && `計算式: <code>${prop.expression}</code>`,
-        prop.lookup && `ルックアップ先: アプリID ${prop.lookup.relatedApp.app} (キー: ${prop.lookup.relatedKeyField})`
+        prop.lookup && `ルックアップ先: <a href="${KINTONE_BASE_URL}/k/${prop.lookup.relatedApp.app}/" target="_blank">アプリID ${prop.lookup.relatedApp.app}</a> (キー: ${prop.lookup.relatedKeyField})`,
+        prop.referenceTable && `関連レコード参照先: <a href="${KINTONE_BASE_URL}/k/${prop.referenceTable.relatedApp.app}/" target="_blank">アプリID ${prop.referenceTable.relatedApp.app}</a>`
       ].filter(Boolean) as string[];
 
       const details = detailParts.join('<br>') || '-';

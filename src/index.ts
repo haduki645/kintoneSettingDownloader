@@ -3,7 +3,7 @@ import path from "path";
 import {
   getAuthHeaders,
 } from "./kintone";
-import { Setting } from "./types";
+import { Setting, AppGroup } from "./types";
 import {
   getTimestampedDirName,
   getPastResultDirs,
@@ -26,8 +26,8 @@ const main = async () => {
     tryCallback: async () => {
       const settingContent = await fs.readFile(settingPath, "utf-8");
       const setting: Setting = JSON.parse(settingContent);
-      if (!Array.isArray(setting.appIds)) {
-        throw new Error("setting.json の appIds パラメータが配列ではありません。");
+      if (!setting.appIds && !setting.apps) {
+        throw new Error("setting.json に appIds または apps パラメータが見つかりません。");
       }
       return { success: true, setting };
     },
@@ -81,10 +81,28 @@ const main = async () => {
   const appNameCache: Record<string, string> = {};
 
   // Phase 1: 全アプリのファイルをダウンロード
-  await setting.appIds.reduce(async (promise: Promise<void>, appId: number) => {
-    await promise;
-    await processApp(appId, setting, headers, resultDir, pastResultDirs, promptTemplates, appNameCache, true);
-  }, Promise.resolve());
+  const processAppsRecursive = async (ids?: number[], groups?: AppGroup[], currentDir?: string) => {
+    const targetDir = currentDir || resultDir;
+    if (ids) {
+      for (const appId of ids) {
+        await processApp(appId, setting, headers, targetDir, pastResultDirs, promptTemplates, appNameCache, true);
+      }
+    }
+    if (groups) {
+      for (const g of groups) {
+        const groupDir = path.join(targetDir, g.group);
+        await fs.mkdir(groupDir, { recursive: true });
+        await processAppsRecursive(g.ids, g.groups, groupDir);
+      }
+    }
+  };
+
+  if (setting.appIds) {
+    await processAppsRecursive(setting.appIds);
+  }
+  if (setting.apps) {
+    await processAppsRecursive(setting.apps.ids, setting.apps.groups);
+  }
 
   // Phase 2: 全アプリのAI解析を一括実行
   const { enableAi } = setting;

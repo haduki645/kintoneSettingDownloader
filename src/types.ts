@@ -4,14 +4,25 @@ export interface AiConfig {
   lmStudioPath?: string;
 }
 
+export interface AppGroup {
+  group: string;
+  ids?: number[];
+  groups?: AppGroup[];
+}
+
 export interface Setting {
-  appIds: number[];
+  appIds?: number[];
+  apps?: {
+    ids?: number[];
+    groups?: AppGroup[];
+  };
   excludeFromMerge?: string[];
   enableAi?: boolean;
   aiConfig?: AiConfig;
   workspaceConfig?: any;
   maxCacheCount?: number;
 }
+
 
 export interface MarkerMatch {
   functionalName: string;

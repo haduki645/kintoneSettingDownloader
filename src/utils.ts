@@ -105,3 +105,34 @@ export const safeRunAsyncGenerator = async function* <T, TReturn = any, TNext = 
     if (finallyCallback) await finallyCallback();
   }
 };
+/**
+ * revision 以外の有効なデータを持っているか判定する
+ */
+export const hasMeaningfulData = (obj: any): boolean => {
+  if (obj === null || obj === undefined) return false;
+
+  if (Array.isArray(obj)) {
+    return obj.some(item => hasMeaningfulData(item));
+  }
+
+  if (typeof obj === "object") {
+    const keys = Object.keys(obj).filter(k => k !== "revision");
+    return keys.some(k => {
+      const val = obj[k];
+      // scope: "ALL" はデフォルト値のため、これ単体では意味のあるデータとはみなさない
+      if (k === "scope" && val === "ALL") return false;
+      return hasMeaningfulData(val);
+    });
+  }
+
+  if (typeof obj === "string") {
+    return obj.trim().length > 0;
+  }
+
+  if (typeof obj === "number" || typeof obj === "boolean") {
+    return true;
+  }
+
+  return false;
+};
+
