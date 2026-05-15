@@ -4,11 +4,11 @@ import { getCheckMark, getEntityName, stripHtml } from "./utils";
 export const generateLookupMd = (appName: string, appId: number, rows: string[]): string => {
   return `# ルックアップ関係一覧\n\n## [${appName} (アプリID: ${appId})](${KINTONE_BASE_URL}/k/admin/app/flow?app=${appId}#section=form)\n\n` +
     `<style>\n` +
-    `  table { border-collapse: collapse; width: 100%; font-size: 14px; }\n` +
-    `  th, td { border: 1px solid #ddd; padding: 12px 8px; text-align: left; vertical-align: middle; }\n` +
-    `  th { background-color: #f4f5f7; color: #333; font-weight: bold; border-bottom: 2px solid #ccc; white-space: nowrap; }\n` +
-    `  td { background-color: #fff; }\n` +
-    `  tbody tr:hover td { background-color: #f9fafb; }\n` +
+    `  table { border-collapse: collapse; width: 100%; font-size: 14px; color: inherit; }\n` +
+    `  th, td { border: 1px solid rgba(128, 128, 128, 0.3); padding: 12px 8px; text-align: left; vertical-align: middle; }\n` +
+    `  th { background-color: rgba(128, 128, 128, 0.1); font-weight: bold; white-space: nowrap; }\n` +
+    `  td { background-color: transparent; }\n` +
+    `  tbody tr:hover td { background-color: rgba(128, 128, 128, 0.05); }\n` +
     `</style>\n\n` +
     `<table>\n` +
     `  <thead>\n` +
@@ -31,11 +31,11 @@ export const generateViewMd = (appId: number, viewsInfo: any): string => {
   const viewsArray = Object.values(views as Record<string, any>).sort((a, b) => Number(a.index) - Number(b.index));
 
   const style = `<style>\n` +
-    `  table { border-collapse: collapse; width: 100%; font-size: 14px; }\n` +
-    `  th, td { border: 1px solid #ddd; padding: 12px 8px; text-align: left; vertical-align: middle; }\n` +
-    `  th { background-color: #f4f5f7; color: #333; font-weight: bold; border-bottom: 2px solid #ccc; white-space: nowrap; }\n` +
-    `  td { background-color: #fff; }\n` +
-    `  tbody tr:hover td { background-color: #f9fafb; }\n` +
+    `  table { border-collapse: collapse; width: 100%; font-size: 14px; color: inherit; }\n` +
+    `  th, td { border: 1px solid rgba(128, 128, 128, 0.3); padding: 12px 8px; text-align: left; vertical-align: middle; }\n` +
+    `  th { background-color: rgba(128, 128, 128, 0.1); font-weight: bold; white-space: nowrap; }\n` +
+    `  td { background-color: transparent; }\n` +
+    `  tbody tr:hover td { background-color: rgba(128, 128, 128, 0.05); }\n` +
     `</style>\n\n`;
 
   const sections = [
@@ -66,11 +66,11 @@ export const generateAclMd = (appId: number, appAclInfo: any, recordAclInfo: any
   const { rights: fieldRights = [] } = fieldAclInfo;
 
   const style = `<style>\n` +
-    `  table { border-collapse: collapse; width: 100%; font-size: 14px; margin-bottom: 20px; }\n` +
-    `  th, td { border: 1px solid #ddd; padding: 12px 8px; text-align: left; vertical-align: middle; }\n` +
-    `  th { background-color: #f4f5f7; color: #333; font-weight: bold; border-bottom: 2px solid #ccc; white-space: nowrap; }\n` +
-    `  td { background-color: #fff; }\n` +
-    `  tbody tr:hover td { background-color: #f9fafb; }\n` +
+    `  table { border-collapse: collapse; width: 100%; font-size: 14px; margin-bottom: 20px; color: inherit; }\n` +
+    `  th, td { border: 1px solid rgba(128, 128, 128, 0.3); padding: 12px 8px; text-align: left; vertical-align: middle; }\n` +
+    `  th { background-color: rgba(128, 128, 128, 0.1); font-weight: bold; white-space: nowrap; }\n` +
+    `  td { background-color: transparent; }\n` +
+    `  tbody tr:hover td { background-color: rgba(128, 128, 128, 0.05); }\n` +
     `  .permission-tag { display: inline-block; padding: 2px 6px; border-radius: 4px; font-size: 11px; margin: 2px; color: #fff; }\n` +
     `  .perm-ok { background-color: #28a745; }\n` +
     `  .perm-ng { background-color: #dc3545; }\n` +
@@ -79,7 +79,7 @@ export const generateAclMd = (appId: number, appAclInfo: any, recordAclInfo: any
   const sections = [
     `# [アクセス権設定 (アプリID: ${appId})](${KINTONE_BASE_URL}/k/admin/app/flow?app=${appId}#section=permissions)\n\n`,
     style,
-    `## アプリのアクセス権\n\n`,
+    `## [アプリのアクセス権](${KINTONE_BASE_URL}/k/admin/app/acl/app?app=${appId})\n\n`,
     `<table>\n  <thead>\n    <tr>\n      <th>対象</th>\n      <th>レコード閲覧</th>\n      <th>レコード追加</th>\n      <th>レコード編集</th>\n      <th>レコード削除</th>\n      <th>アプリ管理</th>\n      <th>ファイル出力</th>\n      <th>ファイル取り込み</th>\n    </tr>\n  </thead>\n  <tbody>\n`,
     appRights.map((right: any) => {
       const { recordViewable, recordAddable, recordEditable, recordDeletable, appEditable, fileExportable, fileImportable } = right;
@@ -97,7 +97,7 @@ export const generateAclMd = (appId: number, appAclInfo: any, recordAclInfo: any
     }).join(""),
     `  </tbody>\n</table>\n\n`,
     recordRights.length > 0 ? (
-      `## レコードのアクセス権\n\n` +
+      `## [レコードのアクセス権](${KINTONE_BASE_URL}/k/admin/app/acl/record?app=${appId})\n\n` +
       `<table>\n  <thead>\n    <tr>\n      <th>優先度</th>\n      <th>条件</th>\n      <th>対象</th>\n      <th>閲覧</th>\n      <th>編集</th>\n      <th>削除</th>\n    </tr>\n  </thead>\n  <tbody>\n` +
       recordRights.map((right: any, priorityIdx: number) => {
         const { entities, filterCond = "なし" } = right;
@@ -117,7 +117,7 @@ export const generateAclMd = (appId: number, appAclInfo: any, recordAclInfo: any
       `  </tbody>\n</table>\n\n`
     ) : null,
     fieldRights.length > 0 ? (
-      `## フィールドのアクセス権\n\n` +
+      `## [フィールドのアクセス権](${KINTONE_BASE_URL}/k/admin/app/acl/field?app=${appId})\n\n` +
       `<table>\n  <thead>\n    <tr>\n      <th>フィールドコード</th>\n      <th>対象</th>\n      <th>閲覧</th>\n      <th>編集</th>\n    </tr>\n  </thead>\n  <tbody>\n` +
       fieldRights.map((right: any) => {
         const { entities, code: fieldCode } = right;
@@ -146,11 +146,11 @@ export const generateNotificationMd = (appId: number, notificationsGeneralInfo: 
   const { reminderNotifications: reminderNotifs = [] } = notificationsReminderInfo;
 
   const style = `<style>\n` +
-    `  table { border-collapse: collapse; width: 100%; font-size: 14px; margin-bottom: 20px; }\n` +
-    `  th, td { border: 1px solid #ddd; padding: 12px 8px; text-align: left; vertical-align: middle; }\n` +
-    `  th { background-color: #f4f5f7; color: #333; font-weight: bold; border-bottom: 2px solid #ccc; white-space: nowrap; }\n` +
-    `  td { background-color: #fff; }\n` +
-    `  tbody tr:hover td { background-color: #f9fafb; }\n` +
+    `  table { border-collapse: collapse; width: 100%; font-size: 14px; margin-bottom: 20px; color: inherit; }\n` +
+    `  th, td { border: 1px solid rgba(128, 128, 128, 0.3); padding: 12px 8px; text-align: left; vertical-align: middle; }\n` +
+    `  th { background-color: rgba(128, 128, 128, 0.1); font-weight: bold; white-space: nowrap; }\n` +
+    `  td { background-color: transparent; }\n` +
+    `  tbody tr:hover td { background-color: rgba(128, 128, 128, 0.05); }\n` +
     `  .permission-tag { display: inline-block; padding: 2px 6px; border-radius: 4px; font-size: 11px; margin: 2px; color: #fff; }\n` +
     `  .perm-ok { background-color: #28a745; }\n` +
     `  .perm-ng { background-color: #dc3545; }\n` +
@@ -226,11 +226,11 @@ export const generateFormMd = (appId: number, fieldsInfo: any, layoutInfo: any):
   }, {} as Record<string, any>);
 
   const style = `<style>\n` +
-    `  table { border-collapse: collapse; width: 100%; font-size: 14px; margin-bottom: 20px; }\n` +
-    `  th, td { border: 1px solid #ddd; padding: 12px 8px; text-align: left; vertical-align: middle; }\n` +
-    `  th { background-color: #f4f5f7; color: #333; font-weight: bold; border-bottom: 2px solid #ccc; white-space: nowrap; }\n` +
-    `  td { background-color: #fff; }\n` +
-    `  tbody tr:hover td { background-color: #f9fafb; }\n` +
+    `  table { border-collapse: collapse; width: 100%; font-size: 14px; margin-bottom: 20px; color: inherit; }\n` +
+    `  th, td { border: 1px solid rgba(128, 128, 128, 0.3); padding: 12px 8px; text-align: left; vertical-align: middle; }\n` +
+    `  th { background-color: rgba(128, 128, 128, 0.1); font-weight: bold; white-space: nowrap; }\n` +
+    `  td { background-color: transparent; }\n` +
+    `  tbody tr:hover td { background-color: rgba(128, 128, 128, 0.05); }\n` +
     `</style>\n\n`;
 
   const renderFieldRows = (fields: any[], location: string): string => {

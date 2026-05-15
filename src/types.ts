@@ -4,16 +4,18 @@ export interface AiConfig {
   lmStudioPath?: string;
 }
 
+export type AppId = number | { stg: number; prd: number };
+
 export interface AppGroup {
   group: string;
-  ids?: number[];
+  ids?: AppId[];
   groups?: AppGroup[];
 }
 
 export interface Setting {
-  appIds?: number[];
+  appIds?: AppId[];
   apps?: {
-    ids?: number[];
+    ids?: AppId[];
     groups?: AppGroup[];
   };
   excludeFromMerge?: string[];
@@ -28,6 +30,7 @@ export interface MarkerMatch {
   functionalName: string;
   marker: string;
   lineNumber: number;
+  sourceFile?: string;
 }
 
 export interface PromptTemplate {

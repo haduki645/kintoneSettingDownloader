@@ -2,8 +2,9 @@ import fs from "fs/promises";
 import path from "path";
 import {
   getAuthHeaders,
+  fetchKintoneApi,
 } from "./kintone";
-import { Setting, AppGroup } from "./types";
+import { Setting, AppGroup, AppId } from "./types";
 import {
   getTimestampedDirName,
   getPastResultDirs,
@@ -16,7 +17,7 @@ import {
   resumeMain,
   processApp,
 } from "./appProcessor";
-import { safeRunAsync } from "./utils";
+import { safeRunAsync, toSafeFileName } from "./utils";
 
 // メイン処理
 const main = async () => {
@@ -70,22 +71,69 @@ const main = async () => {
 
   const { workspaceConfig } = setting;
   if (workspaceConfig) {
+    const workspaceFileName = "kintone_settings.code-workspace";
     await fs.writeFile(
-      path.join(resultDir, "result.code-workspace"),
+      path.join(resultDir, workspaceFileName),
       JSON.stringify(workspaceConfig, null, 2),
       "utf-8"
     );
-    console.log(`[OK] result.code-workspace を作成しました。`);
+    console.log(`[OK] ${workspaceFileName} を作成しました。`);
   }
 
   const appNameCache: Record<string, string> = {};
 
   // Phase 1: 全アプリのファイルをダウンロード
-  const processAppsRecursive = async (ids?: number[], groups?: AppGroup[], currentDir?: string) => {
+  const processAppsRecursive = async (ids?: AppId[], groups?: AppGroup[], currentDir?: string) => {
     const targetDir = currentDir || resultDir;
     if (ids) {
       for (const appId of ids) {
-        await processApp(appId, setting, headers, targetDir, pastResultDirs, promptTemplates, appNameCache, true);
+        if (typeof appId === "number") {
+          await processApp(appId, setting, headers, targetDir, pastResultDirs, promptTemplates, appNameCache, true);
+        } else {
+          // Verify & Production Pair
+          const prdId = appId.prd;
+          const stgId = appId.stg;
+          
+          let prdAppName = "UnknownApp";
+          if (prdId) {
+            await safeRunAsync({
+              tryCallback: async () => {
+                const info = await fetchKintoneApi("/k/v1/app.json", prdId, headers);
+                prdAppName = info.name;
+                appNameCache[prdId] = prdAppName;
+              },
+              catchCallback: async () => {
+                console.warn(`[Warn] 本番アプリID: ${prdId} の名前取得に失敗しました。`);
+              }
+            });
+          }
+
+          const safePrdName = toSafeFileName(prdAppName);
+          const pairDirName = `${prdId}_${safePrdName}`;
+          const pairDir = path.join(targetDir, pairDirName);
+          await fs.mkdir(pairDir, { recursive: true });
+
+          if (stgId) {
+            await processApp(stgId, setting, headers, pairDir, pastResultDirs, promptTemplates, appNameCache, true, "検証");
+          }
+          if (prdId) {
+            await processApp(prdId, setting, headers, pairDir, pastResultDirs, promptTemplates, appNameCache, true, "本番");
+          }
+
+          // WinMerge プロジェクトファイルの作成
+          const winMergeContent = `<?xml version="1.0" encoding="UTF-8"?>
+<project>
+  <paths>
+    <left>検証\\</left>
+    <right>本番\\</right>
+    <filter>*.*</filter>
+    <subfolders>1</subfolders>
+    <left-readonly>0</left-readonly>
+    <right-readonly>0</right-readonly>
+  </paths>
+</project>`;
+          await fs.writeFile(path.join(pairDir, "検証_vs_本番.WinMerge"), winMergeContent, "utf-8");
+        }
       }
     }
     if (groups) {
@@ -116,7 +164,7 @@ const main = async () => {
   console.log(`\n=== すべての処理が完了しました ===`);
 
   if (setting.workspaceConfig) {
-    openWorkspace(path.join(resultDir, "result.code-workspace"));
+    openWorkspace(path.join(resultDir, "kintone_settings.code-workspace"));
   }
 }
 

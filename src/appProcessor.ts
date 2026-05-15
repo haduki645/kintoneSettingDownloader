@@ -65,7 +65,7 @@ export const loadPromptTemplates = async (): Promise<PromptTemplate[]> => {
  * ワークスペースを開く
  */
 export const openWorkspace = (workspacePath: string) => {
-  console.log(`[Info] result.code-workspace を開きます...`);
+  console.log(`[Info] ${path.basename(workspacePath)} を開きます...`);
   exec(`code "${workspacePath}"`, (err) => {
     if (err) exec(`start "" "${workspacePath}"`);
   });
@@ -87,39 +87,59 @@ export const resumeMain = async (resultDir: string, setting: Setting, promptTemp
 
   const processDirectory = async (dir: string) => {
     const entries = await fs.readdir(dir, { withFileTypes: true });
-    
-    for (const entry of entries) {
-      const fullPath = path.join(dir, entry.name);
-      
-      if (entry.isDirectory()) {
-        if (/^\d+_/.test(entry.name)) {
-          // アプリディレクトリを発見
-          const appId = parseInt(entry.name.split("_")[0]);
-          const appDir = fullPath;
-          const appDirName = entry.name;
-          const safeAppName = appDirName.substring(appDirName.indexOf("_") + 1);
 
-          const mergeDir = path.join(appDir, "mergeFiles");
-          await safeRunAsync({
-            tryCallback: async () => {
-              const exists = await fs.access(mergeDir).then(() => true).catch(() => false);
-              if (!exists) return;
+    // mergeFiles ディレクトリがある場合は、ここがアプリディレクトリであると判断
+    const mergeDir = path.join(dir, "mergeFiles");
+    const hasMergeFiles = entries.some(e => e.isDirectory() && e.name === "mergeFiles");
 
-              const files = await fs.readdir(mergeDir);
-              const jsFiles = files.filter(f => f.endsWith(".js") && !f.endsWith(".min.js"));
+    if (hasMergeFiles) {
+      let appId: number | null = null;
+      const dirName = path.basename(dir);
 
-              for (const jsFile of jsFiles) {
-                console.log(`[Resume] アプリ: ${appDirName}, ファイル: ${jsFile}`);
-                const mergedContent = await fs.readFile(path.join(mergeDir, jsFile), "utf-8");
-                const aiGen = handleAiGeneration(appId, appDir, jsFile, mergedContent, setting, promptTemplates, pastResultDirs, safeAppName);
-                for await (const _ of aiGen) { /* 完了を待機 */ }
-              }
+      // 1. ディレクトリ名から ID 取得を試みる
+      if (/^\d+_/.test(dirName)) {
+        appId = parseInt(dirName.split("_")[0]);
+      } else {
+        // 2. ディレクトリ名に ID がない場合（検証/本番フォルダなど）、json/app.json から取得を試みる
+        const appJsonPath = path.join(dir, "json", "app.json");
+        await safeRunAsync({
+          tryCallback: async () => {
+            const content = await fs.readFile(appJsonPath, "utf-8");
+            const appInfo = JSON.parse(content);
+            appId = parseInt(appInfo.appId || appInfo.id);
+          },
+          catchCallback: async () => {
+            // 取得失敗
+          }
+        });
+      }
+
+      if (appId) {
+        const appDirName = dirName;
+        const safeAppName = appDirName.includes("_") ? appDirName.substring(appDirName.indexOf("_") + 1) : appDirName;
+
+        await safeRunAsync({
+          tryCallback: async () => {
+            const files = await fs.readdir(mergeDir);
+            const jsFiles = files.filter(f => f.endsWith(".js") && !f.endsWith(".min.js"));
+
+            for (const jsFile of jsFiles) {
+              console.log(`[Resume] アプリ: ${appDirName}, ファイル: ${jsFile}`);
+              const mergedContent = await fs.readFile(path.join(mergeDir, jsFile), "utf-8");
+              const aiGen = handleAiGeneration(appId!, dir, jsFile, mergedContent, setting, promptTemplates, pastResultDirs, safeAppName);
+              for await (const _ of aiGen) { /* 完了を待機 */ }
             }
-          });
-        } else {
-          // グループフォルダなどの場合はさらに深く探索
-          await processDirectory(fullPath);
-        }
+          }
+        });
+        // アプリディレクトリとして処理した場合は、その下は探索しない
+        return;
+      }
+    }
+
+    // アプリディレクトリでない、または appId が取得できなかった場合は、サブディレクトリを探索
+    for (const entry of entries) {
+      if (entry.isDirectory()) {
+        await processDirectory(path.join(dir, entry.name));
       }
     }
   };
@@ -139,7 +159,8 @@ export const processApp = async (
   pastResultDirs: string[],
   promptTemplates: PromptTemplate[],
   appNameCache: Record<string, string>,
-  skipAi = false
+  skipAi = false,
+  overrideDirName?: string
 ) => {
   console.log(`=== アプリID: ${appId} の処理を開始します ===`);
   await safeRunAsync({
@@ -155,7 +176,8 @@ export const processApp = async (
       if (!appName) throw new Error("アプリ名が取得できませんでした。");
 
       const safeAppName = toSafeFileName(appName);
-      const appDir = path.join(resultDir, `${appId}_${safeAppName}`);
+      const appDirName = overrideDirName || `${appId}_${safeAppName}`;
+      const appDir = path.join(resultDir, appDirName);
       const jsonDir = path.join(appDir, "json");
       await fs.mkdir(jsonDir, { recursive: true });
 
@@ -163,12 +185,22 @@ export const processApp = async (
       const urlContent = `[InternetShortcut]\nURL=${KINTONE_BASE_URL}/k/${appId}/\n`;
       await fs.writeFile(path.join(appDir, "kintoneアプリへ移動.url"), urlContent, "utf-8");
 
+      // .code-workspace の作成
+      if (setting.workspaceConfig) {
+        const workspaceFileName = `${safeAppName}.code-workspace`;
+        await fs.writeFile(
+          path.join(appDir, workspaceFileName),
+          JSON.stringify(setting.workspaceConfig, null, 2),
+          "utf-8"
+        );
+      }
+
 
       // 2. AI処理（カスタマイズファイルのDL含む）と、その他のメタデータDLを並列実行
       const aiTask = handleCustomizeFiles(appId, appName, appDir, customizeInfo, headers, setting, promptTemplates, pastResultDirs, safeAppName, skipAi);
 
-      const writeJson = (filename: string, data: any) => 
-        hasMeaningfulData(data) 
+      const writeJson = (filename: string, data: any) =>
+        hasMeaningfulData(data)
           ? fs.writeFile(path.join(jsonDir, filename), JSON.stringify(data, null, 2), "utf-8")
           : Promise.resolve();
 
@@ -255,12 +287,12 @@ const handleLookups = async (
       if (fieldDef.type === "SUBTABLE" && fieldDef.fields) {
         return await extractLookups(fieldDef.fields, `${prefix}${fieldCode} (テーブル) &gt; `);
       }
-      
+
       if (!fieldDef.lookup) return [];
 
       const { lookup } = fieldDef;
       const relatedAppId = lookup.relatedApp?.app || "不明";
-      
+
       const relatedAppName = await (async () => {
         if (relatedAppId === "不明") return "不明";
         if (appNameCache[relatedAppId]) return appNameCache[relatedAppId];
@@ -278,7 +310,7 @@ const handleLookups = async (
           }
         });
       })();
-      
+
       const mappings = lookup.fieldMappings || [];
       const rowCount = mappings.length || 1;
       const appUrl = relatedAppId !== "不明" ? `<a href="${KINTONE_BASE_URL}/k/${relatedAppId}/" target="_blank">${relatedAppName} (ID: ${relatedAppId})</a>` : `${relatedAppName} (ID: ${relatedAppId})`;
@@ -287,7 +319,7 @@ const handleLookups = async (
         `      <td rowspan="${rowCount}">${appUrl}</td>\n      <td rowspan="${rowCount}">${lookup.relatedKeyField}</td>\n` +
         (mappings.length > 0
           ? `      <td>${mappings[0].field}</td>\n      <td>${mappings[0].relatedField}</td>\n    </tr>\n` +
-            mappings.slice(1).map((m: any) => `    <tr>\n      <td>${m.field}</td>\n      <td>${m.relatedField}</td>\n    </tr>\n`).join("")
+          mappings.slice(1).map((m: any) => `    <tr>\n      <td>${m.field}</td>\n      <td>${m.relatedField}</td>\n    </tr>\n`).join("")
           : `      <td>-</td>\n      <td>-</td>\n    </tr>\n`);
 
       return [rowHtml];
@@ -378,7 +410,8 @@ const processMergeAndAi = async (
 
   const bodyParts = await Promise.all(files.map(async f => {
     const content = await fs.readFile(f, "utf-8");
-    return `/* --- Original File: ${path.basename(f)} --- */\n${content}\n\n`;
+    const relativePath = path.relative(appDir, f).replace(/\\/g, "/");
+    return `/* --- Original File: ${relativePath} --- */\n${content}\n\n`;
   }));
 
   const mergedContent = mergedHeader + bodyParts.join("");
@@ -389,6 +422,9 @@ const processMergeAndAi = async (
   await fs.writeFile(path.join(mergeDir, outputFileName), mergedContent, "utf-8");
 
   if (type === "js") {
+    // 目次生成 (AIの有無に関わらず実行)
+    await generateSpecificationToc(appDir, mergedContent);
+
     if (promptTemplates.length > 0 && !skipAi) {
       const aiGen = handleAiGeneration(appId, appDir, outputFileName, mergedContent, setting, promptTemplates, pastResultDirs, safeAppName);
       for await (const status of aiGen) {
@@ -397,6 +433,57 @@ const processMergeAndAi = async (
     }
     await minifyJs(mergedContent, path.join(mergeDir, `${scope}_merge.min.js`));
   }
+}
+
+/**
+ * 設計書目次.md の生成
+ */
+const generateSpecificationToc = async (appDir: string, mergedContent: string) => {
+  const lines = mergedContent.split("\n");
+  const fileMappings: { start: number; end: number; filename: string }[] = [];
+  let currentFile = "Unknown";
+  let startLine = 1;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const fileMatch = line.match(/\/\* --- Original File: (.+?) --- \*\//);
+    if (fileMatch) {
+      if (currentFile !== "Unknown") {
+        fileMappings.push({ start: startLine, end: i, filename: currentFile });
+      }
+      currentFile = fileMatch[1];
+      startLine = i + 1;
+    }
+  }
+  fileMappings.push({ start: startLine, end: lines.length, filename: currentFile });
+
+  const markerRegex = /#仕様書@\{(.+?)\}/g;
+  const matches = Array.from(mergedContent.matchAll(markerRegex)).map(m => {
+    const [marker, functionalName] = m;
+    const { index = 0 } = m;
+    const lineNumber = mergedContent.substring(0, index).split("\n").length;
+    const sourceFile = fileMappings.find(fm => lineNumber >= fm.start && lineNumber <= fm.end)?.filename;
+    return { functionalName, marker, lineNumber, sourceFile };
+  });
+
+  if (matches.length === 0) return;
+
+  const tocPath = path.join(appDir, "機能一覧.md");
+  let tocContent = `# 機能一覧\n\n`;
+  tocContent += `| 機能名 | ソースファイル |\n`;
+  tocContent += `| :--- | :--- |\n`;
+
+  for (const match of matches) {
+    const fm = fileMappings.find(f => match.sourceFile === f.filename);
+    const originalLineNumber = fm ? match.lineNumber - fm.start : null;
+
+    const sourceLink = match.sourceFile
+      ? `[${path.basename(match.sourceFile)}${originalLineNumber ? `:${originalLineNumber}` : ""}](${match.sourceFile.startsWith(".") ? match.sourceFile : "./" + match.sourceFile}${originalLineNumber ? `#L${originalLineNumber}` : ""})`
+      : "-";
+
+    tocContent += `| ${match.functionalName} | ${sourceLink} |\n`;
+  }
+  await fs.writeFile(tocPath, tocContent, "utf-8");
 }
 
 /**
@@ -412,12 +499,31 @@ const handleAiGeneration = async function* (
   pastResultDirs: string[],
   safeAppName: string
 ): AsyncGenerator<string, void, void> {
+  const lines = mergedContent.split("\n");
+  const fileMappings: { start: number; end: number; filename: string }[] = [];
+  let currentFile = "Unknown";
+  let startLine = 1;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const fileMatch = line.match(/\/\* --- Original File: (.+?) --- \*\//);
+    if (fileMatch) {
+      if (currentFile !== "Unknown") {
+        fileMappings.push({ start: startLine, end: i, filename: currentFile });
+      }
+      currentFile = fileMatch[1];
+      startLine = i + 1;
+    }
+  }
+  fileMappings.push({ start: startLine, end: lines.length, filename: currentFile });
+
   const markerRegex = /#仕様書@\{(.+?)\}/g;
   const matches: MarkerMatch[] = Array.from(mergedContent.matchAll(markerRegex)).map(m => {
     const [marker, functionalName] = m;
     const { index = 0 } = m;
     const lineNumber = mergedContent.substring(0, index).split("\n").length;
-    return { functionalName, marker, lineNumber };
+    const sourceFile = fileMappings.find(fm => lineNumber >= fm.start && lineNumber <= fm.end)?.filename;
+    return { functionalName, marker, lineNumber, sourceFile };
   });
 
   if (matches.length === 0) return;
@@ -561,5 +667,6 @@ const handleAiGeneration = async function* (
       console.log(`  [OK] AIの結果を保存しました: prompts_results/${resultFileName}`);
     }
   }, Promise.resolve());
+
   yield "AI処理完了";
 }
