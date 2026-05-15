@@ -218,7 +218,7 @@ export const processApp = async (
           (hasMeaningfulData(appAcl) || hasMeaningfulData(recordAcl) || hasMeaningfulData(fieldAcl))
             ? fs.writeFile(path.join(appDir, "acl.md"), generateAclMd(appId, appAcl, recordAcl, fieldAcl), "utf-8")
             : Promise.resolve(),
-          (hasMeaningfulData(notifGen) || hasMeaningfulData(notifRec) || hasMeaningfulData(notifRem))
+          (notifGen.generalNotifications?.length || notifRec.perRecordNotifications?.length || notifRem.reminderNotifications?.length)
             ? fs.writeFile(path.join(appDir, "notification.md"), generateNotificationMd(appId, notifGen, notifRec, notifRem), "utf-8")
             : Promise.resolve(),
         ]);
