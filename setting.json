@@ -1,16 +1,4 @@
 {
-  "excludeFromMerge": [
-    "010_config.js",
-    "020_pastRecord.js",
-    "030_commonFunction.js",
-    "070_newsSystemCommonLibs.js",
-    "KintoneRestAPIClient_v2.0.35.min.js",
-    "Kuc.js",
-    "index_search_module.js",
-    "index_search_moduleV2.js",
-    "moji.js",
-    "sweetalert2.min.js"
-  ],
   "apps": {
     "ids": [],
     "groups": [
@@ -396,6 +384,18 @@
       }
     ]
   },
+  "excludeFromMerge": [
+    "010_config.js",
+    "020_pastRecord.js",
+    "030_commonFunction.js",
+    "070_newsSystemCommonLibs.js",
+    "KintoneRestAPIClient_v2.0.35.min.js",
+    "Kuc.js",
+    "index_search_module.js",
+    "index_search_moduleV2.js",
+    "moji.js",
+    "sweetalert2.min.js"
+  ],
   "enableAi": false,
   "aiConfig": {
     "baseUrl": "http://localhost:1234/v1",
@@ -418,7 +418,18 @@
       },
       "workbench.editorAssociations": {
         "*.md": "vscode.markdown.preview.editor"
-      }
+      },
+      "openInExternalApp.openMapper": [
+        {
+          "extensionName": "WinMerge",
+          "apps": [
+            {
+              "title": "WinMerge",
+              "openCommand": "C:\\Program Files\\WinMerge\\WinMergeU.exe"
+            }
+          ]
+        }
+      ]
     }
   }
 }

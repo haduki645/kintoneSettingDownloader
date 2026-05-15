@@ -13,6 +13,18 @@
     },
     "workbench.editorAssociations": {
       "*.md": "vscode.markdown.preview.editor"
-    }
+    },
+    // Open in External App 拡張機能の設定
+    "openInExternalApp.openMapper": [
+      {
+        "extensionName": "WinMerge",
+        "apps": [
+          {
+            "title": "WinMerge",
+            "openCommand": "C:\\Program Files\\WinMerge\\WinMergeU.exe"
+          }
+        ]
+      }
+    ]
   },
 }
