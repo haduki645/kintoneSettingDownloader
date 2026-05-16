@@ -1,3 +1,4 @@
+import { CONSTANTS } from "./constants";
 import fs from "fs/promises";
 import path from "path";
 import {
@@ -10,6 +11,7 @@ import {
   getPastResultDirs,
   cleanupOldResults,
   getReadmeContent,
+  cleanJsonForComparison,
 } from "./fileOps";
 import {
   loadPromptTemplates,
@@ -22,7 +24,7 @@ import { safeRunAsync, toSafeFileName } from "./utils";
 // メイン処理
 const main = async () => {
   const isResumeMode = process.argv.length > 2;
-  const settingPath = path.join(process.cwd(), "setting.json");
+  const settingPath = path.join(process.cwd(), CONSTANTS.FILE_SETTING_JSON);
   const result = await safeRunAsync({
     tryCallback: async () => {
       const settingContent = await fs.readFile(settingPath, "utf-8");
@@ -43,10 +45,10 @@ const main = async () => {
 
   const promptTemplates = await loadPromptTemplates();
   const headers = getAuthHeaders();
-  const baseResultDir = path.join(process.cwd(), "result");
+  const baseResultDir = path.join(process.cwd(), CONSTANTS.DIR_RESULT);
 
   // 過去の結果ディレクトリを取得
-  const { maxCacheCount = 5 } = setting;
+  const { maxCacheCount = CONSTANTS.DEFAULT_MAX_CACHE_COUNT } = setting;
   const pastDirsNames = await getPastResultDirs(baseResultDir);
 
   if (isResumeMode) {
@@ -67,11 +69,11 @@ const main = async () => {
   const resultDir = path.join(baseResultDir, currentResultDirName);
 
   await fs.mkdir(resultDir, { recursive: true });
-  await fs.writeFile(path.join(resultDir, "readme.md"), getReadmeContent(), "utf-8");
+  await fs.writeFile(path.join(resultDir, CONSTANTS.FILE_README_MD), getReadmeContent(), "utf-8");
 
   const { workspaceConfig } = setting;
   if (workspaceConfig) {
-    const workspaceFileName = "kintone_settings.code-workspace";
+    const workspaceFileName = "kintone_settings" + CONSTANTS.SUFFIX_WORKSPACE;
     await fs.writeFile(
       path.join(resultDir, workspaceFileName),
       JSON.stringify(workspaceConfig, null, 2),
@@ -93,12 +95,12 @@ const main = async () => {
           // Verify & Production Pair
           const prdId = appId.prd;
           const stgId = appId.stg;
-          
+
           let prdAppName = "UnknownApp";
           if (prdId) {
             await safeRunAsync({
               tryCallback: async () => {
-                const info = await fetchKintoneApi("/k/v1/app.json", prdId, headers);
+                const info = await fetchKintoneApi(CONSTANTS.API_APP, prdId, headers);
                 prdAppName = info.name;
                 appNameCache[prdId] = prdAppName;
               },
@@ -114,25 +116,47 @@ const main = async () => {
           await fs.mkdir(pairDir, { recursive: true });
 
           if (stgId) {
-            await processApp(stgId, setting, headers, pairDir, pastResultDirs, promptTemplates, appNameCache, true, "検証");
+            await processApp(stgId, setting, headers, pairDir, pastResultDirs, promptTemplates, appNameCache, true, CONSTANTS.ENV_STG);
           }
           if (prdId) {
-            await processApp(prdId, setting, headers, pairDir, pastResultDirs, promptTemplates, appNameCache, true, "本番");
+            await processApp(prdId, setting, headers, pairDir, pastResultDirs, promptTemplates, appNameCache, true, CONSTANTS.ENV_PRD);
           }
+
+          // WinMerge比較用に「customize」と「json」をまとめたフォルダを作成
+          const stgCompareDir = path.join(pairDir, CONSTANTS.ENV_STG, CONSTANTS.DIR_WINMERGE_COMPARE);
+          const prdCompareDir = path.join(pairDir, CONSTANTS.ENV_PRD, CONSTANTS.DIR_WINMERGE_COMPARE);
+
+          await Promise.all([
+            fs.mkdir(stgCompareDir, { recursive: true }).catch(() => {}),
+            fs.mkdir(prdCompareDir, { recursive: true }).catch(() => {})
+          ]);
+
+          await Promise.all([
+            fs.cp(path.join(pairDir, CONSTANTS.ENV_STG, CONSTANTS.DIR_CUSTOMIZE), path.join(stgCompareDir, CONSTANTS.DIR_CUSTOMIZE), { recursive: true }).catch(() => {}),
+            fs.cp(path.join(pairDir, CONSTANTS.ENV_STG, CONSTANTS.DIR_JSON), path.join(stgCompareDir, CONSTANTS.DIR_JSON), { recursive: true }).catch(() => {}),
+            fs.cp(path.join(pairDir, CONSTANTS.ENV_PRD, CONSTANTS.DIR_CUSTOMIZE), path.join(prdCompareDir, CONSTANTS.DIR_CUSTOMIZE), { recursive: true }).catch(() => {}),
+            fs.cp(path.join(pairDir, CONSTANTS.ENV_PRD, CONSTANTS.DIR_JSON), path.join(prdCompareDir, CONSTANTS.DIR_JSON), { recursive: true }).catch(() => {})
+          ]);
+
+          // 比較用JSONから不要な属性（revision等）を除去
+          await Promise.all([
+            cleanJsonForComparison(path.join(stgCompareDir, CONSTANTS.DIR_JSON)),
+            cleanJsonForComparison(path.join(prdCompareDir, CONSTANTS.DIR_JSON))
+          ]);
 
           // WinMerge プロジェクトファイルの作成
           const winMergeContent = `<?xml version="1.0" encoding="UTF-8"?>
 <project>
   <paths>
-    <left>検証\\</left>
-    <right>本番\\</right>
+    <left>検証\\winmerge比較用\\</left>
+    <right>本番\\winmerge比較用\\</right>
     <filter>*.*</filter>
     <subfolders>1</subfolders>
     <left-readonly>0</left-readonly>
     <right-readonly>0</right-readonly>
   </paths>
 </project>`;
-          await fs.writeFile(path.join(pairDir, "検証_vs_本番.WinMerge"), winMergeContent, "utf-8");
+          await fs.writeFile(path.join(pairDir, CONSTANTS.FILE_WINMERGE_PROJECT), winMergeContent, "utf-8");
         }
       }
     }
@@ -164,7 +188,7 @@ const main = async () => {
   console.log(`\n=== すべての処理が完了しました ===`);
 
   if (setting.workspaceConfig) {
-    openWorkspace(path.join(resultDir, "kintone_settings.code-workspace"));
+    openWorkspace(path.join(resultDir, "kintone_settings" + CONSTANTS.SUFFIX_WORKSPACE));
   }
 }
 

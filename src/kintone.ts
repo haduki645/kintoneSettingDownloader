@@ -1,3 +1,4 @@
+import { CONSTANTS } from "./constants";
 import axios from "axios";
 import * as dotenv from "dotenv";
 import { safeRunAsync } from "./utils";
@@ -36,7 +37,7 @@ export const fetchKintoneApi = async (
   headers: any,
 ): Promise<any> => {
   // app.json のみクエリパラメータが 'id' になる点に注意
-  const paramName = endpoint === "/k/v1/app.json" ? "id" : "app";
+  const paramName = endpoint === CONSTANTS.API_APP ? "id" : "app";
   const url = `${KINTONE_BASE_URL}${endpoint}?${paramName}=${appId}`;
   
   return await safeRunAsync({

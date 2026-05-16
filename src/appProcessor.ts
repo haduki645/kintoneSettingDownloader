@@ -1,3 +1,4 @@
+import { CONSTANTS } from "./constants";
 import fs from "fs/promises";
 import path from "path";
 import { exec } from "child_process";
@@ -28,7 +29,7 @@ import {
  */
 export const loadPromptTemplates = async (): Promise<PromptTemplate[]> => {
   const promptTemplates: PromptTemplate[] = [];
-  const promptTemplatesDir = path.join(process.cwd(), "prompt_templates");
+  const promptTemplatesDir = path.join(process.cwd(), CONSTANTS.DIR_PROMPT_TEMPLATES);
   await safeRunAsync({
     tryCallback: async () => {
       const files = await fs.readdir(promptTemplatesDir);
@@ -45,7 +46,7 @@ export const loadPromptTemplates = async (): Promise<PromptTemplate[]> => {
   });
 
   if (promptTemplates.length === 0) {
-    const promptTemplatePath = path.join(process.cwd(), "prompt.md");
+    const promptTemplatePath = path.join(process.cwd(), CONSTANTS.FILE_PROMPT_MD);
     await safeRunAsync({
       tryCallback: async () => {
         promptTemplates.push({
@@ -82,15 +83,15 @@ export const resumeMain = async (resultDir: string, setting: Setting, promptTemp
   const pastDirsNames = await getPastResultDirs(baseResultDir);
   const pastResultDirs = pastDirsNames
     .filter(name => name !== path.basename(resultDir))
-    .slice(0, setting.maxCacheCount || 5)
+    .slice(0, setting.maxCacheCount || CONSTANTS.DEFAULT_MAX_CACHE_COUNT)
     .map(name => path.join(baseResultDir, name));
 
   const processDirectory = async (dir: string) => {
     const entries = await fs.readdir(dir, { withFileTypes: true });
 
     // mergeFiles ディレクトリがある場合は、ここがアプリディレクトリであると判断
-    const mergeDir = path.join(dir, "mergeFiles");
-    const hasMergeFiles = entries.some(e => e.isDirectory() && e.name === "mergeFiles");
+    const mergeDir = path.join(dir, CONSTANTS.DIR_MERGE_FILES);
+    const hasMergeFiles = entries.some(e => e.isDirectory() && e.name === CONSTANTS.DIR_MERGE_FILES);
 
     if (hasMergeFiles) {
       let appId: number | null = null;
@@ -101,7 +102,7 @@ export const resumeMain = async (resultDir: string, setting: Setting, promptTemp
         appId = parseInt(dirName.split("_")[0]);
       } else {
         // 2. ディレクトリ名に ID がない場合（検証/本番フォルダなど）、json/app.json から取得を試みる
-        const appJsonPath = path.join(dir, "json", "app.json");
+        const appJsonPath = path.join(dir, CONSTANTS.DIR_JSON, CONSTANTS.FILE_APP_JSON);
         await safeRunAsync({
           tryCallback: async () => {
             const content = await fs.readFile(appJsonPath, "utf-8");
@@ -167,9 +168,9 @@ export const processApp = async (
     tryCallback: async () => {
       // 1. まず基本情報を取得（ディレクトリ名やルックアップ処理に必要）
       const [appInfo, fieldsInfo, customizeInfo] = await Promise.all([
-        fetchKintoneApi("/k/v1/app.json", appId, headers),
-        fetchKintoneApi("/k/v1/app/form/fields.json", appId, headers),
-        fetchKintoneApi("/k/v1/app/customize.json", appId, headers),
+        fetchKintoneApi(CONSTANTS.API_APP, appId, headers),
+        fetchKintoneApi(CONSTANTS.API_FIELDS, appId, headers),
+        fetchKintoneApi(CONSTANTS.API_CUSTOMIZE, appId, headers),
       ]);
 
       const { name: appName } = appInfo;
@@ -178,12 +179,12 @@ export const processApp = async (
       const safeAppName = toSafeFileName(appName);
       const appDirName = overrideDirName || `${appId}_${safeAppName}`;
       const appDir = path.join(resultDir, appDirName);
-      const jsonDir = path.join(appDir, "json");
+      const jsonDir = path.join(appDir, CONSTANTS.DIR_JSON);
       await fs.mkdir(jsonDir, { recursive: true });
 
       // リンクファイルの作成
       const urlContent = `[InternetShortcut]\nURL=${KINTONE_BASE_URL}/k/${appId}/\n`;
-      await fs.writeFile(path.join(appDir, "kintoneアプリへ移動.url"), urlContent, "utf-8");
+      await fs.writeFile(path.join(appDir, CONSTANTS.FILE_URL_SHORTCUT), urlContent, "utf-8");
 
       // .code-workspace の作成
       if (setting.workspaceConfig) {
@@ -207,51 +208,51 @@ export const processApp = async (
       const metaTask = (async () => {
         // JSONの書き出し
         await Promise.all([
-          writeJson("app.json", appInfo),
-          writeJson("fields.json", fieldsInfo),
-          writeJson("customize.json", customizeInfo),
+          writeJson(CONSTANTS.FILE_APP_JSON, appInfo),
+          writeJson(CONSTANTS.FILE_FIELDS_JSON, fieldsInfo),
+          writeJson(CONSTANTS.FILE_CUSTOMIZE_JSON, customizeInfo),
         ]);
 
         // その他の設定を一括取得
         const [layoutInfo, viewsInfo, appAcl, recordAcl, fieldAcl, notifGen, notifRec, notifRem, actions, plugins] = await Promise.all([
-          fetchKintoneApi("/k/v1/app/form/layout.json", appId, headers),
-          fetchKintoneApi("/k/v1/app/views.json", appId, headers),
-          fetchKintoneApi("/k/v1/app/acl.json", appId, headers),
-          fetchKintoneApi("/k/v1/record/acl.json", appId, headers),
-          fetchKintoneApi("/k/v1/field/acl.json", appId, headers),
-          fetchKintoneApi("/k/v1/app/notifications/general.json", appId, headers),
-          fetchKintoneApi("/k/v1/app/notifications/perRecord.json", appId, headers),
-          fetchKintoneApi("/k/v1/app/notifications/reminder.json", appId, headers),
-          fetchKintoneApi("/k/v1/app/actions.json", appId, headers),
-          fetchKintoneApi("/k/v1/app/plugins.json", appId, headers),
+          fetchKintoneApi(CONSTANTS.API_LAYOUT, appId, headers),
+          fetchKintoneApi(CONSTANTS.API_VIEWS, appId, headers),
+          fetchKintoneApi(CONSTANTS.API_ACL_APP, appId, headers),
+          fetchKintoneApi(CONSTANTS.API_ACL_RECORD, appId, headers),
+          fetchKintoneApi(CONSTANTS.API_ACL_FIELD, appId, headers),
+          fetchKintoneApi(CONSTANTS.API_NOTIF_GENERAL, appId, headers),
+          fetchKintoneApi(CONSTANTS.API_NOTIF_RECORD, appId, headers),
+          fetchKintoneApi(CONSTANTS.API_NOTIF_REMINDER, appId, headers),
+          fetchKintoneApi(CONSTANTS.API_ACTIONS, appId, headers),
+          fetchKintoneApi(CONSTANTS.API_PLUGINS, appId, headers),
         ]);
 
         // JSON保存
         await Promise.all([
-          writeJson("layout.json", layoutInfo),
-          writeJson("views.json", viewsInfo),
-          writeJson("appAcl.json", appAcl),
-          writeJson("recordAcl.json", recordAcl),
-          writeJson("fieldAcl.json", fieldAcl),
-          writeJson("notificationsGeneral.json", notifGen),
-          writeJson("notificationsPerRecord.json", notifRec),
-          writeJson("notificationsReminder.json", notifRem),
-          writeJson("actions.json", actions),
-          writeJson("plugins.json", plugins),
+          writeJson(CONSTANTS.FILE_LAYOUT_JSON, layoutInfo),
+          writeJson(CONSTANTS.FILE_VIEWS_JSON, viewsInfo),
+          writeJson(CONSTANTS.FILE_APP_ACL_JSON, appAcl),
+          writeJson(CONSTANTS.FILE_RECORD_ACL_JSON, recordAcl),
+          writeJson(CONSTANTS.FILE_FIELD_ACL_JSON, fieldAcl),
+          writeJson(CONSTANTS.FILE_NOTIF_GENERAL_JSON, notifGen),
+          writeJson(CONSTANTS.FILE_NOTIF_RECORD_JSON, notifRec),
+          writeJson(CONSTANTS.FILE_NOTIF_REMINDER_JSON, notifRem),
+          writeJson(CONSTANTS.FILE_ACTIONS_JSON, actions),
+          writeJson(CONSTANTS.FILE_PLUGINS_JSON, plugins),
         ]);
 
         // ドキュメント生成
         await Promise.all([
           handleLookups(appId, appName, appDir, fieldsInfo, headers, appNameCache),
-          fs.writeFile(path.join(appDir, "form.md"), generateFormMd(appId, fieldsInfo, layoutInfo), "utf-8"),
+          fs.writeFile(path.join(appDir, CONSTANTS.FILE_FORM_MD), generateFormMd(appId, fieldsInfo, layoutInfo), "utf-8"),
           hasMeaningfulData(viewsInfo)
-            ? fs.writeFile(path.join(appDir, "view.md"), generateViewMd(appId, viewsInfo), "utf-8")
+            ? fs.writeFile(path.join(appDir, CONSTANTS.FILE_VIEW_MD), generateViewMd(appId, viewsInfo), "utf-8")
             : Promise.resolve(),
           (hasMeaningfulData(appAcl) || hasMeaningfulData(recordAcl) || hasMeaningfulData(fieldAcl))
-            ? fs.writeFile(path.join(appDir, "acl.md"), generateAclMd(appId, appAcl, recordAcl, fieldAcl), "utf-8")
+            ? fs.writeFile(path.join(appDir, CONSTANTS.FILE_ACL_MD), generateAclMd(appId, appAcl, recordAcl, fieldAcl), "utf-8")
             : Promise.resolve(),
           (notifGen.generalNotifications?.length || notifRec.perRecordNotifications?.length || notifRem.reminderNotifications?.length)
-            ? fs.writeFile(path.join(appDir, "notification.md"), generateNotificationMd(appId, notifGen, notifRec, notifRem), "utf-8")
+            ? fs.writeFile(path.join(appDir, CONSTANTS.FILE_NOTIFICATION_MD), generateNotificationMd(appId, notifGen, notifRec, notifRem), "utf-8")
             : Promise.resolve(),
         ]);
         console.log(`  [Info] アプリID: ${appId} の設定ファイルダウンロードが完了しました。`);
@@ -299,7 +300,7 @@ const handleLookups = async (
 
         return await safeRunAsync({
           tryCallback: async () => {
-            const info = await fetchKintoneApi("/k/v1/app.json", Number(relatedAppId), headers);
+            const info = await fetchKintoneApi(CONSTANTS.API_APP, Number(relatedAppId), headers);
             appNameCache[relatedAppId] = info.name;
             return info.name;
           },
@@ -330,7 +331,7 @@ const handleLookups = async (
   if (fieldsInfo.properties) {
     const rows = await extractLookups(fieldsInfo.properties);
     if (rows.length > 0) {
-      await fs.writeFile(path.join(appDir, "lookup_relation.md"), generateLookupMd(appName, appId, rows), "utf-8");
+      await fs.writeFile(path.join(appDir, CONSTANTS.FILE_LOOKUP_RELATION_MD), generateLookupMd(appName, appId, rows), "utf-8");
     }
   }
 }
@@ -352,7 +353,7 @@ const handleCustomizeFiles = async (
 ) => {
   const scopes = ["desktop", "mobile"];
   const types = ["js", "css"];
-  const customizeDir = path.join(appDir, "customize");
+  const customizeDir = path.join(appDir, CONSTANTS.DIR_CUSTOMIZE);
 
   await scopes.reduce(async (scopePromise: Promise<void>, scope) => {
     await scopePromise;
@@ -416,7 +417,7 @@ const processMergeAndAi = async (
 
   const mergedContent = mergedHeader + bodyParts.join("");
 
-  const mergeDir = path.join(appDir, "mergeFiles");
+  const mergeDir = path.join(appDir, CONSTANTS.DIR_MERGE_FILES);
   await fs.mkdir(mergeDir, { recursive: true });
   const outputFileName = `${scope}_merge.${type}`;
   await fs.writeFile(path.join(mergeDir, outputFileName), mergedContent, "utf-8");
@@ -468,7 +469,7 @@ const generateSpecificationToc = async (appDir: string, mergedContent: string) =
 
   if (matches.length === 0) return;
 
-  const tocPath = path.join(appDir, "機能一覧.md");
+  const tocPath = path.join(appDir, CONSTANTS.FILE_FUNCTION_LIST_MD);
   let tocContent = `# 機能一覧\n\n`;
   tocContent += `| 機能名 | ソースファイル |\n`;
   tocContent += `| :--- | :--- |\n`;
@@ -528,8 +529,8 @@ const handleAiGeneration = async function* (
 
   if (matches.length === 0) return;
 
-  const resultsDir = path.join(appDir, "prompts_results");
-  const promptsDir = path.join(appDir, "prompts");
+  const resultsDir = path.join(appDir, CONSTANTS.DIR_PROMPTS_RESULTS);
+  const promptsDir = path.join(appDir, CONSTANTS.DIR_PROMPTS);
   await Promise.all([
     fs.mkdir(resultsDir, { recursive: true }),
     fs.mkdir(promptsDir, { recursive: true }),

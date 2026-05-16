@@ -1,7 +1,85 @@
+import { CONSTANTS } from "./constants";
 import fs from "fs/promises";
 import path from "path";
 import { minify } from "terser";
 import { formatTimestamp, errorToString, safeRunAsync } from "./utils";
+
+/**
+ * 比較用フォルダのJSONファイルから不要なプロパティ（revisionなど）を削除する
+ */
+export const cleanJsonForComparison = async (jsonDir: string) => {
+  const files = await fs.readdir(jsonDir).catch(() => []);
+  for (const file of files) {
+    if (!file.endsWith(".json")) continue;
+    const filePath = path.join(jsonDir, file);
+    try {
+      const excludeFiles = [
+        CONSTANTS.FILE_APP_JSON,
+        CONSTANTS.FILE_APP_ACL_JSON,
+        CONSTANTS.FILE_FIELD_ACL_JSON,
+        CONSTANTS.FILE_RECORD_ACL_JSON,
+        CONSTANTS.FILE_NOTIF_GENERAL_JSON,
+        CONSTANTS.FILE_NOTIF_RECORD_JSON,
+        CONSTANTS.FILE_NOTIF_REMINDER_JSON,
+      ];
+      if (excludeFiles.includes(file)) {
+        await fs.unlink(filePath);
+        continue;
+      }
+
+      const content = await fs.readFile(filePath, "utf-8");
+      const obj = JSON.parse(content);
+      
+      // 1. 全ファイル共通: revisionの削除
+      if (obj.revision !== undefined) {
+        delete obj.revision;
+      }
+
+      // 2. views.json: 各ビューの id を削除
+      if (file === CONSTANTS.FILE_VIEWS_JSON && obj.views) {
+        for (const viewKey of Object.keys(obj.views)) {
+          if (obj.views[viewKey].id !== undefined) {
+            delete obj.views[viewKey].id;
+          }
+        }
+      }
+
+      // 3. fields.json: relatedApp の app を削除 (汎用的・再帰的)
+      if (file === CONSTANTS.FILE_FIELDS_JSON && obj.properties) {
+        const removeRelatedAppId = (node: any) => {
+          if (Array.isArray(node)) {
+            node.forEach(removeRelatedAppId);
+          } else if (node && typeof node === "object") {
+            if (node.relatedApp && typeof node.relatedApp === "object" && node.relatedApp.app !== undefined) {
+              delete node.relatedApp.app;
+            }
+            Object.values(node).forEach(removeRelatedAppId);
+          }
+        };
+        removeRelatedAppId(obj.properties);
+      }
+
+      // 4. customize.json: fileKey, contentType, size を削除
+      if (file === CONSTANTS.FILE_CUSTOMIZE_JSON) {
+        const removeUnnecessaryFileProps = (node: any) => {
+          if (Array.isArray(node)) {
+            node.forEach(removeUnnecessaryFileProps);
+          } else if (node && typeof node === "object") {
+            if (node.fileKey !== undefined) delete node.fileKey;
+            if (node.contentType !== undefined) delete node.contentType;
+            if (node.size !== undefined) delete node.size;
+            Object.values(node).forEach(removeUnnecessaryFileProps);
+          }
+        };
+        removeUnnecessaryFileProps(obj);
+      }
+
+      await fs.writeFile(filePath, JSON.stringify(obj, null, 2), "utf-8");
+    } catch (e) {
+      console.error(`Failed to clean JSON for comparison: ${filePath}`, e);
+    }
+  }
+};
 
 /**
  * タイムスタンプ付きのディレクトリ名を取得する
