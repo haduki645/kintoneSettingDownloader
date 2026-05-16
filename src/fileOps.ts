@@ -44,7 +44,7 @@ export const cleanJsonForComparison = async (jsonDir: string) => {
         }
       }
 
-      // 3. fields.json: relatedApp の app を削除 (汎用的・再帰的)
+      // 3. fields.json: relatedApp の app を削除 および ソート処理
       if (file === CONSTANTS.FILE_FIELDS_JSON && obj.properties) {
         const removeRelatedAppId = (node: any) => {
           if (Array.isArray(node)) {
@@ -57,6 +57,33 @@ export const cleanJsonForComparison = async (jsonDir: string) => {
           }
         };
         removeRelatedAppId(obj.properties);
+
+        const sortObjectKeys = (node: any): any => {
+          if (Array.isArray(node)) {
+            return node.map(item => sortObjectKeys(item));
+          } else if (node !== null && typeof node === "object") {
+            const keys = Object.keys(node);
+            
+            const isIndexSort = keys.length > 0 && keys.every(k => 
+              typeof node[k] === "object" && node[k] !== null && node[k].index !== undefined
+            );
+            
+            if (isIndexSort) {
+              keys.sort((a, b) => Number(node[a].index) - Number(node[b].index));
+            } else {
+              keys.sort();
+            }
+
+            const newNode: any = {};
+            for (const key of keys) {
+              newNode[key] = sortObjectKeys(node[key]);
+            }
+            return newNode;
+          }
+          return node;
+        };
+
+        obj.properties = sortObjectKeys(obj.properties);
       }
 
       // 4. customize.json: fileKey, contentType, size を削除
