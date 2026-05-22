@@ -58,9 +58,18 @@ export const cleanJsonForComparison = async (jsonDir: string) => {
         };
         removeRelatedAppId(obj.properties);
 
-        const sortObjectKeys = (node: any): any => {
+        const sortObjectKeys = (parentKey: string | null, node: any): any => {
           if (Array.isArray(node)) {
-            return node.map(item => sortObjectKeys(item));
+            const newArray = node.map(item => sortObjectKeys(null, item));
+            if (parentKey === "fieldMappings") {
+              newArray.sort((a, b) => {
+                if (a.field && b.field) {
+                  return String(a.field).localeCompare(String(b.field));
+                }
+                return 0;
+              });
+            }
+            return newArray;
           } else if (node !== null && typeof node === "object") {
             const keys = Object.keys(node);
             
@@ -76,14 +85,14 @@ export const cleanJsonForComparison = async (jsonDir: string) => {
 
             const newNode: any = {};
             for (const key of keys) {
-              newNode[key] = sortObjectKeys(node[key]);
+              newNode[key] = sortObjectKeys(key, node[key]);
             }
             return newNode;
           }
           return node;
         };
 
-        obj.properties = sortObjectKeys(obj.properties);
+        obj.properties = sortObjectKeys(null, obj.properties);
       }
 
       // 4. customize.json: fileKey, contentType, size を削除
