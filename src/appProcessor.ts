@@ -5,7 +5,7 @@ import { exec } from "child_process";
 import {
   fetchKintoneApi,
   downloadKintoneFile,
-  KINTONE_BASE_URL,
+  getEnvConfig,
 } from "./kintone";
 import { Setting, MarkerMatch, PromptTemplate } from "./types";
 import { callAiApi, getCachedResult } from "./ai";
@@ -155,7 +155,7 @@ export const resumeMain = async (resultDir: string, setting: Setting, promptTemp
 export const processApp = async (
   appId: number,
   setting: Setting,
-  headers: any,
+  domain: string | undefined,
   resultDir: string,
   pastResultDirs: string[],
   promptTemplates: PromptTemplate[],
@@ -168,9 +168,9 @@ export const processApp = async (
     tryCallback: async () => {
       // 1. まず基本情報を取得（ディレクトリ名やルックアップ処理に必要）
       const [appInfo, fieldsInfo, customizeInfo] = await Promise.all([
-        fetchKintoneApi(CONSTANTS.API_APP, appId, headers),
-        fetchKintoneApi(CONSTANTS.API_FIELDS, appId, headers),
-        fetchKintoneApi(CONSTANTS.API_CUSTOMIZE, appId, headers),
+        fetchKintoneApi(CONSTANTS.API_APP, appId, domain),
+        fetchKintoneApi(CONSTANTS.API_FIELDS, appId, domain),
+        fetchKintoneApi(CONSTANTS.API_CUSTOMIZE, appId, domain),
       ]);
 
       const { name: appName } = appInfo;
@@ -183,7 +183,8 @@ export const processApp = async (
       await fs.mkdir(jsonDir, { recursive: true });
 
       // リンクファイルの作成
-      const urlContent = `[InternetShortcut]\nURL=${KINTONE_BASE_URL}/k/${appId}/\n`;
+      const baseUrl = getEnvConfig(domain).baseUrl;
+      const urlContent = `[InternetShortcut]\nURL=${baseUrl}/k/${appId}/\n`;
       await fs.writeFile(path.join(appDir, CONSTANTS.FILE_URL_SHORTCUT), urlContent, "utf-8");
 
       // .code-workspace の作成
@@ -198,7 +199,7 @@ export const processApp = async (
 
 
       // 2. AI処理（カスタマイズファイルのDL含む）と、その他のメタデータDLを並列実行
-      const aiTask = handleCustomizeFiles(appId, appName, appDir, customizeInfo, headers, setting, promptTemplates, pastResultDirs, safeAppName, skipAi);
+      const aiTask = handleCustomizeFiles(appId, appName, appDir, customizeInfo, domain, setting, promptTemplates, pastResultDirs, safeAppName, skipAi);
 
       const writeJson = (filename: string, data: any) =>
         hasMeaningfulData(data)
@@ -215,16 +216,16 @@ export const processApp = async (
 
         // その他の設定を一括取得
         const [layoutInfo, viewsInfo, appAcl, recordAcl, fieldAcl, notifGen, notifRec, notifRem, actions, plugins] = await Promise.all([
-          fetchKintoneApi(CONSTANTS.API_LAYOUT, appId, headers),
-          fetchKintoneApi(CONSTANTS.API_VIEWS, appId, headers),
-          fetchKintoneApi(CONSTANTS.API_ACL_APP, appId, headers),
-          fetchKintoneApi(CONSTANTS.API_ACL_RECORD, appId, headers),
-          fetchKintoneApi(CONSTANTS.API_ACL_FIELD, appId, headers),
-          fetchKintoneApi(CONSTANTS.API_NOTIF_GENERAL, appId, headers),
-          fetchKintoneApi(CONSTANTS.API_NOTIF_RECORD, appId, headers),
-          fetchKintoneApi(CONSTANTS.API_NOTIF_REMINDER, appId, headers),
-          fetchKintoneApi(CONSTANTS.API_ACTIONS, appId, headers),
-          fetchKintoneApi(CONSTANTS.API_PLUGINS, appId, headers),
+          fetchKintoneApi(CONSTANTS.API_LAYOUT, appId, domain),
+          fetchKintoneApi(CONSTANTS.API_VIEWS, appId, domain),
+          fetchKintoneApi(CONSTANTS.API_ACL_APP, appId, domain),
+          fetchKintoneApi(CONSTANTS.API_ACL_RECORD, appId, domain),
+          fetchKintoneApi(CONSTANTS.API_ACL_FIELD, appId, domain),
+          fetchKintoneApi(CONSTANTS.API_NOTIF_GENERAL, appId, domain),
+          fetchKintoneApi(CONSTANTS.API_NOTIF_RECORD, appId, domain),
+          fetchKintoneApi(CONSTANTS.API_NOTIF_REMINDER, appId, domain),
+          fetchKintoneApi(CONSTANTS.API_ACTIONS, appId, domain),
+          fetchKintoneApi(CONSTANTS.API_PLUGINS, appId, domain),
         ]);
 
         // JSON保存
@@ -243,7 +244,7 @@ export const processApp = async (
 
         // ドキュメント生成
         await Promise.all([
-          handleLookups(appId, appName, appDir, fieldsInfo, headers, appNameCache),
+          handleLookups(appId, appName, appDir, fieldsInfo, domain, appNameCache),
           fs.writeFile(path.join(appDir, CONSTANTS.FILE_FORM_MD), generateFormMd(appId, fieldsInfo, layoutInfo), "utf-8"),
           hasMeaningfulData(viewsInfo)
             ? fs.writeFile(path.join(appDir, CONSTANTS.FILE_VIEW_MD), generateViewMd(appId, viewsInfo), "utf-8")
@@ -278,7 +279,7 @@ const handleLookups = async (
   appName: string,
   appDir: string,
   fieldsInfo: any,
-  headers: any,
+  domain: string | undefined,
   appNameCache: Record<string, string>
 ) => {
   const extractLookups = async (properties: any, prefix = ""): Promise<string[]> => {
@@ -300,7 +301,7 @@ const handleLookups = async (
 
         return await safeRunAsync({
           tryCallback: async () => {
-            const info = await fetchKintoneApi(CONSTANTS.API_APP, Number(relatedAppId), headers);
+            const info = await fetchKintoneApi(CONSTANTS.API_APP, Number(relatedAppId), domain);
             appNameCache[relatedAppId] = info.name;
             return info.name;
           },
@@ -314,7 +315,8 @@ const handleLookups = async (
 
       const mappings = lookup.fieldMappings || [];
       const rowCount = mappings.length || 1;
-      const appUrl = relatedAppId !== "不明" ? `<a href="${KINTONE_BASE_URL}/k/${relatedAppId}/" target="_blank">${relatedAppName} (ID: ${relatedAppId})</a>` : `${relatedAppName} (ID: ${relatedAppId})`;
+      const baseUrl = getEnvConfig(domain).baseUrl;
+      const appUrl = relatedAppId !== "不明" ? `<a href="${baseUrl}/k/${relatedAppId}/" target="_blank">${relatedAppName} (ID: ${relatedAppId})</a>` : `${relatedAppName} (ID: ${relatedAppId})`;
 
       const rowHtml = `    <tr>\n      <td rowspan="${rowCount}">${prefix}${fieldCode}</td>\n` +
         `      <td rowspan="${rowCount}">${appUrl}</td>\n      <td rowspan="${rowCount}">${lookup.relatedKeyField}</td>\n` +
@@ -344,7 +346,7 @@ const handleCustomizeFiles = async (
   appName: string,
   appDir: string,
   customizeInfo: any,
-  headers: any,
+  domain: string | undefined,
   setting: Setting,
   promptTemplates: PromptTemplate[],
   pastResultDirs: string[],
@@ -370,7 +372,7 @@ const handleCustomizeFiles = async (
         await fs.mkdir(targetDir, { recursive: true });
         const targetPath = path.join(targetDir, toSafeFileName(fileName));
         try {
-          const data = await downloadKintoneFile(fileKey, headers);
+          const data = await downloadKintoneFile(fileKey, domain);
           await fs.writeFile(targetPath, data);
           return targetPath;
         } catch (e) {
@@ -380,7 +382,7 @@ const handleCustomizeFiles = async (
       }))).filter((p): p is string => p !== null);
 
       if (filesToMerge.length > 0) {
-        await processMergeAndAi(appId, appName, appDir, scope, type, filesToMerge, setting, promptTemplates, pastResultDirs, safeAppName, skipAi);
+        await processMergeAndAi(appId, appName, appDir, scope, type, filesToMerge, setting, promptTemplates, pastResultDirs, safeAppName, skipAi, domain);
       }
     }, Promise.resolve());
   }, Promise.resolve());
@@ -392,16 +394,17 @@ const handleCustomizeFiles = async (
 const processMergeAndAi = async (
   appId: number, appName: string, appDir: string, scope: string, type: string,
   allFilePaths: string[], setting: Setting, promptTemplates: PromptTemplate[], pastResultDirs: string[], safeAppName: string,
-  skipAi = false
+  skipAi = false, domain?: string
 ) => {
   const exclude = setting.excludeFromMerge || [];
   const files = allFilePaths.filter(p => !exclude.includes(path.basename(p))).sort();
   const excluded = allFilePaths.filter(p => exclude.includes(path.basename(p))).sort();
 
+  const baseUrl = getEnvConfig(domain).baseUrl;
   const mergedHeader = [
     `/*`,
     ` アプリ名: ${appName}`,
-    ` 設定URL: ${KINTONE_BASE_URL}/k/admin/app/flow?app=${appId}`,
+    ` 設定URL: ${baseUrl}/k/admin/app/flow?app=${appId}`,
     ` マージ一覧:`,
     ...files.map(f => ` - ${path.basename(f)}`),
     ` 除外一覧:`,

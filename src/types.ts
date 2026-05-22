@@ -19,6 +19,8 @@ export interface WorkspaceConfig {
 }
 
 export interface Setting {
+  stgDomain?: string;
+  prdDomain?: string;
   appIds?: AppId[];
   apps?: {
     ids?: AppId[];
@@ -29,6 +31,13 @@ export interface Setting {
   aiConfig?: AiConfig;
   workspaceConfig?: WorkspaceConfig[];
   maxCacheCount?: number;
+}
+
+export interface KintoneEnvConfig {
+  baseUrl: string;
+  apiToken: string;
+  username?: string;
+  password?: string;
 }
 
 
