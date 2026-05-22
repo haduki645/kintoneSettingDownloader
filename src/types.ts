@@ -12,6 +12,12 @@ export interface AppGroup {
   groups?: AppGroup[];
 }
 
+export interface WorkspaceConfig {
+  fileName: string;
+  folders: any[];
+  settings: any;
+}
+
 export interface Setting {
   appIds?: AppId[];
   apps?: {
@@ -21,7 +27,7 @@ export interface Setting {
   excludeFromMerge?: string[];
   enableAi?: boolean;
   aiConfig?: AiConfig;
-  workspaceConfig?: any;
+  workspaceConfig?: WorkspaceConfig[];
   maxCacheCount?: number;
 }
 
