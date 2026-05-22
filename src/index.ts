@@ -1,10 +1,7 @@
 import { CONSTANTS } from "./constants";
 import fs from "fs/promises";
 import path from "path";
-import {
-  getAuthHeaders,
-  fetchKintoneApi,
-} from "./kintone";
+import { getAuthHeaders, fetchKintoneApi } from "./kintone";
 import { Setting, AppGroup, AppId } from "./types";
 import {
   getTimestampedDirName,
@@ -30,14 +27,16 @@ const main = async () => {
       const settingContent = await fs.readFile(settingPath, "utf-8");
       const setting: Setting = JSON.parse(settingContent);
       if (!setting.appIds && !setting.apps) {
-        throw new Error("setting.json に appIds または apps パラメータが見つかりません。");
+        throw new Error(
+          "setting.json に appIds または apps パラメータが見つかりません。",
+        );
       }
       return { success: true, setting };
     },
     catchCallback: async (err) => {
       console.error("setting.json の読み取りに失敗しました:", err);
       return { success: false, setting: null as any };
-    }
+    },
   });
 
   if (!result.success) return;
@@ -62,27 +61,35 @@ const main = async () => {
     return;
   }
 
-  const pastResultDirs = pastDirsNames.slice(0, maxCacheCount).map(name => path.join(baseResultDir, name));
+  const pastResultDirs = pastDirsNames
+    .slice(0, maxCacheCount)
+    .map((name) => path.join(baseResultDir, name));
 
   // 今回の結果ディレクトリを作成
   const currentResultDirName = getTimestampedDirName();
   const resultDir = path.join(baseResultDir, currentResultDirName);
 
   await fs.mkdir(resultDir, { recursive: true });
-  await fs.writeFile(path.join(resultDir, CONSTANTS.FILE_README_MD), getReadmeContent(), "utf-8");
+  await fs.writeFile(
+    path.join(resultDir, CONSTANTS.FILE_README_MD),
+    getReadmeContent(),
+    "utf-8",
+  );
 
   const { workspaceConfig } = setting;
   if (workspaceConfig && Array.isArray(workspaceConfig)) {
     for (const config of workspaceConfig) {
       if (!config.fileName) {
-        throw new Error("workspaceConfig の要素に fileName が指定されていません。");
+        throw new Error(
+          "workspaceConfig の要素に fileName が指定されていません。",
+        );
       }
       const workspaceFileName = config.fileName + CONSTANTS.SUFFIX_WORKSPACE;
       const { fileName, ...wsData } = config;
       await fs.writeFile(
         path.join(resultDir, workspaceFileName),
         JSON.stringify(wsData, null, 2),
-        "utf-8"
+        "utf-8",
       );
       console.log(`[OK] ${workspaceFileName} を作成しました。`);
     }
@@ -91,12 +98,27 @@ const main = async () => {
   const appNameCache: Record<string, string> = {};
 
   // Phase 1: 全アプリのファイルをダウンロード
-  const processAppsRecursive = async (ids?: AppId[], groups?: AppGroup[], currentDir?: string, topLevelGroupDir?: string, relativeGroupPath: string = "") => {
+  const processAppsRecursive = async (
+    ids?: AppId[],
+    groups?: AppGroup[],
+    currentDir?: string,
+    topLevelGroupDir?: string,
+    relativeGroupPath: string = "",
+  ) => {
     const targetDir = currentDir || resultDir;
     if (ids) {
       for (const appId of ids) {
         if (typeof appId === "number") {
-          await processApp(appId, setting, headers, targetDir, pastResultDirs, promptTemplates, appNameCache, true);
+          await processApp(
+            appId,
+            setting,
+            headers,
+            targetDir,
+            pastResultDirs,
+            promptTemplates,
+            appNameCache,
+            true,
+          );
         } else {
           // Verify & Production Pair
           const prdId = appId.prd;
@@ -106,13 +128,19 @@ const main = async () => {
           if (prdId) {
             await safeRunAsync({
               tryCallback: async () => {
-                const info = await fetchKintoneApi(CONSTANTS.API_APP, prdId, headers);
+                const info = await fetchKintoneApi(
+                  CONSTANTS.API_APP,
+                  prdId,
+                  headers,
+                );
                 prdAppName = info.name;
                 appNameCache[prdId] = prdAppName;
               },
               catchCallback: async () => {
-                console.warn(`[Warn] 本番アプリID: ${prdId} の名前取得に失敗しました。`);
-              }
+                console.warn(
+                  `[Warn] 本番アプリID: ${prdId} の名前取得に失敗しました。`,
+                );
+              },
             });
           }
 
@@ -122,32 +150,100 @@ const main = async () => {
           await fs.mkdir(pairDir, { recursive: true });
 
           if (stgId) {
-            await processApp(stgId, setting, headers, pairDir, pastResultDirs, promptTemplates, appNameCache, true, CONSTANTS.ENV_STG);
+            await processApp(
+              stgId,
+              setting,
+              headers,
+              pairDir,
+              pastResultDirs,
+              promptTemplates,
+              appNameCache,
+              true,
+              CONSTANTS.ENV_STG,
+            );
           }
           if (prdId) {
-            await processApp(prdId, setting, headers, pairDir, pastResultDirs, promptTemplates, appNameCache, true, CONSTANTS.ENV_PRD);
+            await processApp(
+              prdId,
+              setting,
+              headers,
+              pairDir,
+              pastResultDirs,
+              promptTemplates,
+              appNameCache,
+              true,
+              CONSTANTS.ENV_PRD,
+            );
           }
 
           if (topLevelGroupDir) {
             // Group直下の winmerge比較用 フォルダにコピー
-            const stgCompareDir = path.join(topLevelGroupDir, CONSTANTS.DIR_WINMERGE_COMPARE, CONSTANTS.ENV_STG, relativeGroupPath, pairDirName);
-            const prdCompareDir = path.join(topLevelGroupDir, CONSTANTS.DIR_WINMERGE_COMPARE, CONSTANTS.ENV_PRD, relativeGroupPath, pairDirName);
+            const stgCompareDir = path.join(
+              topLevelGroupDir,
+              CONSTANTS.DIR_WINMERGE_COMPARE,
+              CONSTANTS.ENV_STG,
+              relativeGroupPath,
+              pairDirName,
+            );
+            const prdCompareDir = path.join(
+              topLevelGroupDir,
+              CONSTANTS.DIR_WINMERGE_COMPARE,
+              CONSTANTS.ENV_PRD,
+              relativeGroupPath,
+              pairDirName,
+            );
 
             await Promise.all([
               fs.mkdir(stgCompareDir, { recursive: true }).catch(() => {}),
-              fs.mkdir(prdCompareDir, { recursive: true }).catch(() => {})
+              fs.mkdir(prdCompareDir, { recursive: true }).catch(() => {}),
             ]);
 
             await Promise.all([
-              fs.cp(path.join(pairDir, CONSTANTS.ENV_STG, CONSTANTS.DIR_CUSTOMIZE), path.join(stgCompareDir, CONSTANTS.DIR_CUSTOMIZE), { recursive: true }).catch(() => {}),
-              fs.cp(path.join(pairDir, CONSTANTS.ENV_STG, CONSTANTS.DIR_JSON), path.join(stgCompareDir, CONSTANTS.DIR_JSON), { recursive: true }).catch(() => {}),
-              fs.cp(path.join(pairDir, CONSTANTS.ENV_PRD, CONSTANTS.DIR_CUSTOMIZE), path.join(prdCompareDir, CONSTANTS.DIR_CUSTOMIZE), { recursive: true }).catch(() => {}),
-              fs.cp(path.join(pairDir, CONSTANTS.ENV_PRD, CONSTANTS.DIR_JSON), path.join(prdCompareDir, CONSTANTS.DIR_JSON), { recursive: true }).catch(() => {})
+              fs
+                .cp(
+                  path.join(
+                    pairDir,
+                    CONSTANTS.ENV_STG,
+                    CONSTANTS.DIR_CUSTOMIZE,
+                  ),
+                  path.join(stgCompareDir, CONSTANTS.DIR_CUSTOMIZE),
+                  { recursive: true },
+                )
+                .catch(() => {}),
+              fs
+                .cp(
+                  path.join(pairDir, CONSTANTS.ENV_STG, CONSTANTS.DIR_JSON),
+                  path.join(stgCompareDir, CONSTANTS.DIR_JSON),
+                  { recursive: true },
+                )
+                .catch(() => {}),
+              fs
+                .cp(
+                  path.join(
+                    pairDir,
+                    CONSTANTS.ENV_PRD,
+                    CONSTANTS.DIR_CUSTOMIZE,
+                  ),
+                  path.join(prdCompareDir, CONSTANTS.DIR_CUSTOMIZE),
+                  { recursive: true },
+                )
+                .catch(() => {}),
+              fs
+                .cp(
+                  path.join(pairDir, CONSTANTS.ENV_PRD, CONSTANTS.DIR_JSON),
+                  path.join(prdCompareDir, CONSTANTS.DIR_JSON),
+                  { recursive: true },
+                )
+                .catch(() => {}),
             ]);
 
             await Promise.all([
-              cleanJsonForComparison(path.join(stgCompareDir, CONSTANTS.DIR_JSON)),
-              cleanJsonForComparison(path.join(prdCompareDir, CONSTANTS.DIR_JSON))
+              cleanJsonForComparison(
+                path.join(stgCompareDir, CONSTANTS.DIR_JSON),
+              ),
+              cleanJsonForComparison(
+                path.join(prdCompareDir, CONSTANTS.DIR_JSON),
+              ),
             ]);
 
             // アプリ直下の WinMerge プロジェクトファイルの作成 (Groupからの相対パスを計算)
@@ -165,28 +261,75 @@ const main = async () => {
     <right-readonly>0</right-readonly>
   </paths>
 </project>`;
-            await fs.writeFile(path.join(pairDir, CONSTANTS.FILE_WINMERGE_PROJECT), winMergeContent, "utf-8");
-
+            await fs.writeFile(
+              path.join(pairDir, CONSTANTS.FILE_WINMERGE_PROJECT),
+              winMergeContent,
+              "utf-8",
+            );
           } else {
             // Groupがない場合 (アプリ直下に winmerge比較用 を作成)
-            const stgCompareDir = path.join(pairDir, CONSTANTS.ENV_STG, CONSTANTS.DIR_WINMERGE_COMPARE);
-            const prdCompareDir = path.join(pairDir, CONSTANTS.ENV_PRD, CONSTANTS.DIR_WINMERGE_COMPARE);
+            const stgCompareDir = path.join(
+              pairDir,
+              CONSTANTS.ENV_STG,
+              CONSTANTS.DIR_WINMERGE_COMPARE,
+            );
+            const prdCompareDir = path.join(
+              pairDir,
+              CONSTANTS.ENV_PRD,
+              CONSTANTS.DIR_WINMERGE_COMPARE,
+            );
 
             await Promise.all([
               fs.mkdir(stgCompareDir, { recursive: true }).catch(() => {}),
-              fs.mkdir(prdCompareDir, { recursive: true }).catch(() => {})
+              fs.mkdir(prdCompareDir, { recursive: true }).catch(() => {}),
             ]);
 
             await Promise.all([
-              fs.cp(path.join(pairDir, CONSTANTS.ENV_STG, CONSTANTS.DIR_CUSTOMIZE), path.join(stgCompareDir, CONSTANTS.DIR_CUSTOMIZE), { recursive: true }).catch(() => {}),
-              fs.cp(path.join(pairDir, CONSTANTS.ENV_STG, CONSTANTS.DIR_JSON), path.join(stgCompareDir, CONSTANTS.DIR_JSON), { recursive: true }).catch(() => {}),
-              fs.cp(path.join(pairDir, CONSTANTS.ENV_PRD, CONSTANTS.DIR_CUSTOMIZE), path.join(prdCompareDir, CONSTANTS.DIR_CUSTOMIZE), { recursive: true }).catch(() => {}),
-              fs.cp(path.join(pairDir, CONSTANTS.ENV_PRD, CONSTANTS.DIR_JSON), path.join(prdCompareDir, CONSTANTS.DIR_JSON), { recursive: true }).catch(() => {})
+              fs
+                .cp(
+                  path.join(
+                    pairDir,
+                    CONSTANTS.ENV_STG,
+                    CONSTANTS.DIR_CUSTOMIZE,
+                  ),
+                  path.join(stgCompareDir, CONSTANTS.DIR_CUSTOMIZE),
+                  { recursive: true },
+                )
+                .catch(() => {}),
+              fs
+                .cp(
+                  path.join(pairDir, CONSTANTS.ENV_STG, CONSTANTS.DIR_JSON),
+                  path.join(stgCompareDir, CONSTANTS.DIR_JSON),
+                  { recursive: true },
+                )
+                .catch(() => {}),
+              fs
+                .cp(
+                  path.join(
+                    pairDir,
+                    CONSTANTS.ENV_PRD,
+                    CONSTANTS.DIR_CUSTOMIZE,
+                  ),
+                  path.join(prdCompareDir, CONSTANTS.DIR_CUSTOMIZE),
+                  { recursive: true },
+                )
+                .catch(() => {}),
+              fs
+                .cp(
+                  path.join(pairDir, CONSTANTS.ENV_PRD, CONSTANTS.DIR_JSON),
+                  path.join(prdCompareDir, CONSTANTS.DIR_JSON),
+                  { recursive: true },
+                )
+                .catch(() => {}),
             ]);
 
             await Promise.all([
-              cleanJsonForComparison(path.join(stgCompareDir, CONSTANTS.DIR_JSON)),
-              cleanJsonForComparison(path.join(prdCompareDir, CONSTANTS.DIR_JSON))
+              cleanJsonForComparison(
+                path.join(stgCompareDir, CONSTANTS.DIR_JSON),
+              ),
+              cleanJsonForComparison(
+                path.join(prdCompareDir, CONSTANTS.DIR_JSON),
+              ),
             ]);
 
             const winMergeContent = `<?xml version="1.0" encoding="UTF-8"?>
@@ -200,7 +343,11 @@ const main = async () => {
     <right-readonly>0</right-readonly>
   </paths>
 </project>`;
-            await fs.writeFile(path.join(pairDir, CONSTANTS.FILE_WINMERGE_PROJECT), winMergeContent, "utf-8");
+            await fs.writeFile(
+              path.join(pairDir, CONSTANTS.FILE_WINMERGE_PROJECT),
+              winMergeContent,
+              "utf-8",
+            );
           }
         }
       }
@@ -212,7 +359,9 @@ const main = async () => {
 
         const isTopLevel = !topLevelGroupDir;
         const currentTopLevelGroupDir = topLevelGroupDir || groupDir;
-        const currentRelativeGroupPath = topLevelGroupDir ? path.join(relativeGroupPath, g.group) : "";
+        const currentRelativeGroupPath = topLevelGroupDir
+          ? path.join(relativeGroupPath, g.group)
+          : "";
 
         if (isTopLevel) {
           // グループフォルダ直下に WinMerge と .code-workspace を作成
@@ -227,22 +376,36 @@ const main = async () => {
     <right-readonly>0</right-readonly>
   </paths>
 </project>`;
-          await fs.writeFile(path.join(groupDir, CONSTANTS.FILE_WINMERGE_PROJECT), winMergeContent, "utf-8");
+          await fs.writeFile(
+            path.join(groupDir, CONSTANTS.FILE_WINMERGE_PROJECT),
+            winMergeContent,
+            "utf-8",
+          );
 
-          if (setting.workspaceConfig && Array.isArray(setting.workspaceConfig)) {
+          if (
+            setting.workspaceConfig &&
+            Array.isArray(setting.workspaceConfig)
+          ) {
             for (const config of setting.workspaceConfig) {
-              const workspaceFileName = config.fileName + CONSTANTS.SUFFIX_WORKSPACE;
+              const workspaceFileName =
+                config.fileName + CONSTANTS.SUFFIX_WORKSPACE;
               const { fileName, ...wsData } = config;
               await fs.writeFile(
                 path.join(groupDir, workspaceFileName),
                 JSON.stringify(wsData, null, 2),
-                "utf-8"
+                "utf-8",
               );
             }
           }
         }
 
-        await processAppsRecursive(g.ids, g.groups, groupDir, currentTopLevelGroupDir, currentRelativeGroupPath);
+        await processAppsRecursive(
+          g.ids,
+          g.groups,
+          groupDir,
+          currentTopLevelGroupDir,
+          currentRelativeGroupPath,
+        );
       }
     }
   };
@@ -266,9 +429,14 @@ const main = async () => {
   console.log(`\n=== すべての処理が完了しました ===`);
 
   if (setting.workspaceConfig) {
-    openWorkspace(path.join(resultDir, "kintone_settings" + CONSTANTS.SUFFIX_WORKSPACE));
+    openWorkspace(
+      path.join(
+        resultDir,
+        setting.workspaceConfig.at(0).fileName + CONSTANTS.SUFFIX_WORKSPACE,
+      ),
+    );
   }
-}
+};
 
 // 実行
 main().catch(console.error);
