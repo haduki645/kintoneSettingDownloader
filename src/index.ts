@@ -174,8 +174,7 @@ const main = async () => {
               });
             }
 
-            const safePrdName = toSafeFileName(prdAppName);
-            const pairDirName = `${prdId}_${safePrdName}`;
+            const pairDirName = toSafeFileName(prdAppName);
             const pairDir = path.join(targetDir, pairDirName);
             await fs.mkdir(pairDir, { recursive: true });
 
