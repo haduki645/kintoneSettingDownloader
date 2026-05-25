@@ -35,13 +35,23 @@ export const cleanJsonForComparison = async (jsonDir: string) => {
         delete obj.revision;
       }
 
-      // 2. views.json: 各ビューの id を削除
+      // 2. views.json: 各ビューの id を削除 および index の昇順で並び替え
       if (file === CONSTANTS.FILE_VIEWS_JSON && obj.views) {
-        for (const viewKey of Object.keys(obj.views)) {
+        const viewKeys = Object.keys(obj.views);
+        for (const viewKey of viewKeys) {
           if (obj.views[viewKey].id !== undefined) {
             delete obj.views[viewKey].id;
           }
         }
+
+        // indexの昇順で並び替える
+        viewKeys.sort((a, b) => Number(obj.views[a].index) - Number(obj.views[b].index));
+
+        const sortedViews: any = {};
+        for (const key of viewKeys) {
+          sortedViews[key] = obj.views[key];
+        }
+        obj.views = sortedViews;
       }
 
       // 3. fields.json: relatedApp の app を削除 および ソート処理
