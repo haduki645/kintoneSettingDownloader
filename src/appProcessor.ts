@@ -652,7 +652,7 @@ const generateSpecificationToc = async (
     filename: currentFile,
   });
 
-  const markerRegex = /#仕様書@\{(.+?)\}/g;
+  const markerRegex = /#機能@\{(.+?)\}/g;
   const matches = Array.from(mergedContent.matchAll(markerRegex)).map((m) => {
     const [marker, functionalName] = m;
     const { index = 0 } = m;
@@ -718,7 +718,7 @@ const handleAiGeneration = async function* (
     filename: currentFile,
   });
 
-  const markerRegex = /#仕様書@\{(.+?)\}/g;
+  const markerRegex = /#機能@\{(.+?)\}/g;
   const matches: MarkerMatch[] = Array.from(
     mergedContent.matchAll(markerRegex),
   ).map((m) => {
