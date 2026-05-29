@@ -7,7 +7,7 @@ import { safeRunAsync, safeRunAsyncGenerator } from "./utils";
 import { exec } from "child_process";
 
 /**
- * AI API呼び出し用の初期化処理を管理するクロージャ.
+ * AI API呼び出し用の初期化処理を管理するクロージャ
  */
 const getInitPromise = (() => {
   let initPromise: Promise<void> | null = null;
