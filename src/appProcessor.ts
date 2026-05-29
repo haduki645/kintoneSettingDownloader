@@ -75,6 +75,19 @@ export const openWorkspace = (workspacePath: string) => {
   });
 };
 
+const copyFilesUnderAppFolder = async (appDir: string) => {
+  const sourceDir = path.join(process.cwd(), "filesUnderAppFolder");
+  const exists = await fs.access(sourceDir).then(() => true).catch(() => false);
+  if (!exists) return;
+
+  const entries = await fs.readdir(sourceDir, { withFileTypes: true });
+  for (const entry of entries) {
+    const sourcePath = path.join(sourceDir, entry.name);
+    const targetPath = path.join(appDir, entry.name);
+    await fs.cp(sourcePath, targetPath, { recursive: entry.isDirectory(), force: true });
+  }
+};
+
 /**
  * 既存の結果フォルダに対してAI処理のみを再開する
  */
@@ -215,6 +228,7 @@ export const processApp = async (
       const appDir = path.join(resultDir, appDirName);
       const jsonDir = path.join(appDir, CONSTANTS.DIR_JSON);
       await fs.mkdir(jsonDir, { recursive: true });
+      await copyFilesUnderAppFolder(appDir);
 
       // リンクファイルの作成
       const baseUrl = getEnvConfig(domain).baseUrl;
