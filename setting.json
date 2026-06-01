@@ -398,12 +398,6 @@
     "moji.js",
     "sweetalert2.min.js"
   ],
-  "enableAi": false,
-  "aiConfig": {
-    "baseUrl": "http://localhost:1234/v1",
-    "model": "google/gemma-4-e4b",
-    "lmStudioPath": "C:\\Users\\nanan\\AppData\\Local\\Programs\\LM Studio\\LM Studio.exe"
-  },
   "workspaceConfig": [
     {
       "fileName": "設定簡易確認用",

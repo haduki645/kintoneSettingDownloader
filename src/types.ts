@@ -1,9 +1,3 @@
-export interface AiConfig {
-  baseUrl: string;
-  model: string;
-  lmStudioPath?: string;
-}
-
 export type AppId = number | { stg: number; prd: number };
 
 export interface AppGroup {
@@ -27,8 +21,6 @@ export interface Setting {
     groups?: AppGroup[];
   };
   excludeFromMerge?: string[];
-  enableAi?: boolean;
-  aiConfig?: AiConfig;
   workspaceConfig?: WorkspaceConfig[];
   maxCacheCount?: number;
 }
