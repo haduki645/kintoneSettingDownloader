@@ -1,0 +1,138 @@
+{
+  "stgDomain": "https://bandaivender.cybozu.com",
+  "prdDomain": "https://bandaivender.cybozu.com",
+  "apps": {
+    "ids": [
+      {
+        "stg": 217,
+        "prd": 127
+      }
+    ]
+  },
+  "excludeFromMerge": [
+    "010_config.js",
+    "020_pastRecord.js",
+    "030_commonFunction.js",
+    "070_newsSystemCommonLibs.js",
+    "KintoneRestAPIClient_v2.0.35.min.js",
+    "Kuc.js",
+    "index_search_module.js",
+    "index_search_moduleV2.js",
+    "moji.js",
+    "sweetalert2.min.js"
+  ],
+  "enableAi": false,
+  "aiConfig": {
+    "baseUrl": "http://localhost:1234/v1",
+    "model": "google/gemma-4-e4b",
+    "lmStudioPath": "C:\\Users\\nanan\\AppData\\Local\\Programs\\LM Studio\\LM Studio.exe"
+  },
+  "workspaceConfig": [
+    {
+      "fileName": "設定簡易確認用",
+      "folders": [
+        {
+          "path": "."
+        }
+      ],
+      "settings": {
+        "files.exclude": {
+          "**/本番/": true,
+          "**/winmerge比較用/": true,
+          "**/json": true,
+          "**/desktop_merge.min.js": true,
+          "**/desktop_merge.css": true,
+          "**/customize/": true,
+          "**/prompts/": true
+        },
+        "workbench.editorAssociations": {
+          "*.md": "vscode.markdown.preview.editor"
+        },
+        "openInExternalApp.openMapper": [
+          {
+            "extensionName": "WinMerge",
+            "apps": [
+              {
+                "title": "WinMerge",
+                "openCommand": "C:\\Program Files\\WinMerge\\WinMergeU.exe"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "fileName": "JsCss確認用",
+      "folders": [
+        {
+          "path": "."
+        }
+      ],
+      "settings": {
+        "files.exclude": {
+          "**/本番/": true,
+          "**/mergeFiles/": true,
+          "**/prompts/": true,
+          "**/*.md": true,
+          "**/json/": true,
+          "**/winmerge比較用/": true,
+          "**/*.code-workspace": true,
+          "**/*.url": true,
+          "**/*.WinMerge": true
+        },
+        "workbench.editorAssociations": {
+          "*.md": "vscode.markdown.preview.editor"
+        },
+        "openInExternalApp.openMapper": [
+          {
+            "extensionName": "WinMerge",
+            "apps": [
+              {
+                "title": "WinMerge",
+                "openCommand": "C:\\Program Files\\WinMerge\\WinMergeU.exe"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "fileName": "全体調査用",
+      "folders": [
+        {
+          "path": "."
+        }
+      ],
+      "settings": {
+        "files.exclude": {
+          "**/本番/": true,
+          "**/mergeFiles/": true,
+          "**/prompts/": true,
+          "**/*.md": true,
+          "**/json/app.json": true,
+          "**/json/layout.json": true,
+          "**/json/plugins.json": true,
+          "**/json/customize.json": true,
+          "**/winmerge比較用/": true,
+          "**/*.code-workspace": true,
+          "**/*.url": true,
+          "**/*.WinMerge": true
+        },
+        "workbench.editorAssociations": {
+          "*.md": "vscode.markdown.preview.editor"
+        },
+        "openInExternalApp.openMapper": [
+          {
+            "extensionName": "WinMerge",
+            "apps": [
+              {
+                "title": "WinMerge",
+                "openCommand": "C:\\Program Files\\WinMerge\\WinMergeU.exe"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}
