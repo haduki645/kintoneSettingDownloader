@@ -212,6 +212,89 @@ export const processApp = async (
       // 3. 全てのタスクの完了を待機
       await Promise.all([aiTask, metaTask]);
 
+      // vscode tasks generation
+      const customizeJsonPath = path.join(
+        jsonDir,
+        CONSTANTS.FILE_CUSTOMIZE_JSON,
+      );
+      const customizeDirPath = path.join(appDir, CONSTANTS.DIR_CUSTOMIZE);
+
+      const hasCustomizeJson = await fs
+        .access(customizeJsonPath)
+        .then(() => true)
+        .catch(() => false);
+      const hasCustomizeDir = await fs
+        .access(customizeDirPath)
+        .then(() => true)
+        .catch(() => false);
+
+      if (hasCustomizeJson && hasCustomizeDir) {
+        // Create .vscode folder
+        const vscodeDir = path.join(appDir, ".vscode");
+        await fs.mkdir(vscodeDir, { recursive: true });
+
+        // Generate customize-manifest.json
+        const customizeJsonContent = await fs.readFile(
+          customizeJsonPath,
+          "utf-8",
+        );
+        const customizeInfo = JSON.parse(customizeJsonContent);
+
+        const manifest: any = {
+          scope: customizeInfo.scope || "ALL",
+          desktop: { js: [], css: [] },
+          mobile: { js: [], css: [] },
+        };
+
+        const scopes = ["desktop", "mobile"] as const;
+        const types = ["js", "css"] as const;
+
+        for (const scope of scopes) {
+          for (const type of types) {
+            const items = customizeInfo[scope]?.[type] || [];
+            for (const item of items) {
+              if (item.type === "FILE" && item.file?.name) {
+                manifest[scope][type].push(
+                  `${CONSTANTS.DIR_CUSTOMIZE}/${scope}/${type}/${toSafeFileName(item.file.name)}`,
+                );
+              } else if (item.type === "URL" && item.url) {
+                manifest[scope][type].push(item.url);
+              }
+            }
+          }
+        }
+
+        // Write customize-manifest.json
+        await fs.writeFile(
+          path.join(appDir, "customize-manifest.json"),
+          JSON.stringify(manifest, null, 2),
+          "utf-8",
+        );
+
+        // Generate tasks.json
+        const config = getEnvConfig(domain);
+        const tasksJson = {
+          version: "2.0.0",
+          tasks: [
+            {
+              label: "kintone: upload customize files",
+              type: "shell",
+              command: `npx @kintone/cli-kintone customize apply --base-url "${config.baseUrl}" --app "${appId}" --username "${config.username}" --password "${config.password}" --input customize-manifest.json`,
+              group: {
+                kind: "build",
+                isDefault: true,
+              },
+            },
+          ],
+        };
+
+        await fs.writeFile(
+          path.join(vscodeDir, "tasks.json"),
+          JSON.stringify(tasksJson, null, 2),
+          "utf-8",
+        );
+      }
+
       console.log(`=== アプリID: ${appId} の処理が完了しました ===\n`);
     },
     catchCallback: async (error: any) => {
