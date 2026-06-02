@@ -1,0 +1,1 @@
+node dist/index.js メーカー進捗setting.json
