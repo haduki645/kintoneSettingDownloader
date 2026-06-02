@@ -68,7 +68,6 @@ KINTONE_PASSWORD_2=comture2023
 - `stgDomain` / `prdDomain`: この設定ファイルで使用するドメイン。`.env` で設定した `KINTONE_BASE_URL` と一致するものが自動で選択されます。
 - `apps`: ダウンロード対象の kintone アプリ。環境ごとのID (`stg`, `prd`) のペアや単一のID、階層化されたグループ構成 (`groups`) を指定できます。
 - `excludeFromMerge`: マージ処理から除外したいファイル名の配列。外部ライブラリや、個別に管理したい共通設定ファイルなどを指定します。
-- `enableAi`: ローカルAI等を利用した処理を行うかどうかのフラグです。
 - `aiConfig`: AIAPIのエンドポイントやモデルパス等の設定です。
 - `workspaceConfig`: 出力される `.code-workspace` の設定内容です。
 
@@ -103,7 +102,6 @@ KINTONE_PASSWORD_2=comture2023
     "020_pastRecord.js",
     "KintoneRestAPIClient_v2.0.35.min.js"
   ],
-  "enableAi": false,
   "aiConfig": {
     "baseUrl": "http://localhost:1234/v1",
     "model": "google/gemma-4-e4b"

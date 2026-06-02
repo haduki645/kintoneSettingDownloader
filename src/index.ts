@@ -10,12 +10,7 @@ import {
   getReadmeContent,
   cleanJsonForComparison,
 } from "./fileOps";
-import {
-  loadPromptTemplates,
-  openWorkspace,
-  resumeMain,
-  processApp,
-} from "./appProcessor";
+import { openWorkspace,  processApp } from "./appProcessor";
 import { safeRunAsync, toSafeFileName } from "./utils";
 
 // メイン処理
@@ -31,9 +26,9 @@ const main = async () => {
   });
 
   const isResumeMode = values.resume || false;
-  const settingFiles = positionals.length > 0 ? positionals : [CONSTANTS.FILE_SETTING_JSON];
+  const settingFiles =
+    positionals.length > 0 ? positionals : [CONSTANTS.FILE_SETTING_JSON];
 
-  const promptTemplates = await loadPromptTemplates();
   const baseResultDir = path.join(process.cwd(), CONSTANTS.DIR_RESULT);
   const pastDirsNames = await getPastResultDirs(baseResultDir);
 
@@ -46,7 +41,9 @@ const main = async () => {
       return;
     }
     activeTimestampDir = path.join(baseResultDir, pastDirsNames[0]);
-    console.log(`\n=== Resume Mode: ${path.basename(activeTimestampDir)} を対象に再開します ===`);
+    console.log(
+      `\n=== Resume Mode: ${path.basename(activeTimestampDir)} を対象に再開します ===`,
+    );
   } else {
     await fs.mkdir(activeTimestampDir, { recursive: true });
   }
@@ -54,7 +51,10 @@ const main = async () => {
   // 設定ごとのループ
   for (const settingFileName of settingFiles) {
     const settingPath = path.resolve(process.cwd(), settingFileName);
-    const settingBaseName = path.basename(settingFileName, path.extname(settingFileName));
+    const settingBaseName = path.basename(
+      settingFileName,
+      path.extname(settingFileName),
+    );
     const resultDir = path.join(activeTimestampDir, settingBaseName);
 
     const result = await safeRunAsync({
@@ -62,7 +62,9 @@ const main = async () => {
         const settingContent = await fs.readFile(settingPath, "utf-8");
         const setting: Setting = JSON.parse(settingContent);
         if (!setting.appIds && !setting.apps) {
-          throw new Error(`${settingFileName} に appIds または apps パラメータが見つかりません。`);
+          throw new Error(
+            `${settingFileName} に appIds または apps パラメータが見つかりません。`,
+          );
         }
         return { success: true, setting };
       },
@@ -74,21 +76,6 @@ const main = async () => {
 
     if (!result.success) continue;
     const { setting } = result;
-
-    if (isResumeMode) {
-      const exists = await fs.access(resultDir).then(() => true).catch(() => false);
-      if (exists) {
-        await resumeMain(resultDir, setting, promptTemplates);
-      } else {
-        console.warn(`[Warn] ${settingBaseName} の結果ディレクトリが見つからないためスキップします。`);
-      }
-      continue;
-    }
-
-    const { maxCacheCount = CONSTANTS.DEFAULT_MAX_CACHE_COUNT } = setting;
-    const pastResultDirs = pastDirsNames
-      .slice(0, maxCacheCount)
-      .map((name) => path.join(baseResultDir, name, settingBaseName)); // 過去の結果も設定フォルダの下を見る
 
     console.log(`\n--- [処理開始] ${settingFileName} ---`);
     await fs.mkdir(resultDir, { recursive: true });
@@ -102,7 +89,9 @@ const main = async () => {
     if (workspaceConfig && Array.isArray(workspaceConfig)) {
       for (const config of workspaceConfig) {
         if (!config.fileName) {
-          throw new Error("workspaceConfig の要素に fileName が指定されていません。");
+          throw new Error(
+            "workspaceConfig の要素に fileName が指定されていません。",
+          );
         }
         const workspaceFileName = config.fileName + CONSTANTS.SUFFIX_WORKSPACE;
         const { fileName, ...wsData } = config;
@@ -150,10 +139,7 @@ const main = async () => {
               setting,
               setting.prdDomain || setting.stgDomain, // default domain for individual app
               targetDir,
-              pastResultDirs,
-              promptTemplates,
               appNameCache,
-              true,
             );
           } else {
             const prdId = appId.prd;
@@ -164,12 +150,18 @@ const main = async () => {
               await safeRunAsync({
                 tryCallback: async () => {
                   const { fetchKintoneApi } = await import("./kintone");
-                  const info = await fetchKintoneApi(CONSTANTS.API_APP, prdId, setting.prdDomain);
+                  const info = await fetchKintoneApi(
+                    CONSTANTS.API_APP,
+                    prdId,
+                    setting.prdDomain,
+                  );
                   prdAppName = info.name;
                   appNameCache[prdId] = prdAppName;
                 },
                 catchCallback: async () => {
-                  console.warn(`[Warn] 本番アプリID: ${prdId} の名前取得に失敗しました。`);
+                  console.warn(
+                    `[Warn] 本番アプリID: ${prdId} の名前取得に失敗しました。`,
+                  );
                 },
               });
             }
@@ -184,10 +176,7 @@ const main = async () => {
                 setting,
                 setting.stgDomain,
                 pairDir,
-                pastResultDirs,
-                promptTemplates,
                 appNameCache,
-                true,
                 CONSTANTS.ENV_STG,
               );
             }
@@ -197,16 +186,13 @@ const main = async () => {
                 setting,
                 setting.prdDomain,
                 pairDir,
-                pastResultDirs,
-                promptTemplates,
                 appNameCache,
-                true,
                 CONSTANTS.ENV_PRD,
               );
             }
 
             const relativeToResultDir = path.relative(resultDir, pairDir);
-            
+
             const stgCompareDir = path.join(
               resultDir,
               CONSTANTS.DIR_WINMERGE_COMPARE,
@@ -226,15 +212,51 @@ const main = async () => {
             ]);
 
             await Promise.all([
-              fs.cp(path.join(pairDir, CONSTANTS.ENV_STG, CONSTANTS.DIR_CUSTOMIZE), path.join(stgCompareDir, CONSTANTS.DIR_CUSTOMIZE), { recursive: true }).catch(() => {}),
-              fs.cp(path.join(pairDir, CONSTANTS.ENV_STG, CONSTANTS.DIR_JSON), path.join(stgCompareDir, CONSTANTS.DIR_JSON), { recursive: true }).catch(() => {}),
-              fs.cp(path.join(pairDir, CONSTANTS.ENV_PRD, CONSTANTS.DIR_CUSTOMIZE), path.join(prdCompareDir, CONSTANTS.DIR_CUSTOMIZE), { recursive: true }).catch(() => {}),
-              fs.cp(path.join(pairDir, CONSTANTS.ENV_PRD, CONSTANTS.DIR_JSON), path.join(prdCompareDir, CONSTANTS.DIR_JSON), { recursive: true }).catch(() => {}),
+              fs
+                .cp(
+                  path.join(
+                    pairDir,
+                    CONSTANTS.ENV_STG,
+                    CONSTANTS.DIR_CUSTOMIZE,
+                  ),
+                  path.join(stgCompareDir, CONSTANTS.DIR_CUSTOMIZE),
+                  { recursive: true },
+                )
+                .catch(() => {}),
+              fs
+                .cp(
+                  path.join(pairDir, CONSTANTS.ENV_STG, CONSTANTS.DIR_JSON),
+                  path.join(stgCompareDir, CONSTANTS.DIR_JSON),
+                  { recursive: true },
+                )
+                .catch(() => {}),
+              fs
+                .cp(
+                  path.join(
+                    pairDir,
+                    CONSTANTS.ENV_PRD,
+                    CONSTANTS.DIR_CUSTOMIZE,
+                  ),
+                  path.join(prdCompareDir, CONSTANTS.DIR_CUSTOMIZE),
+                  { recursive: true },
+                )
+                .catch(() => {}),
+              fs
+                .cp(
+                  path.join(pairDir, CONSTANTS.ENV_PRD, CONSTANTS.DIR_JSON),
+                  path.join(prdCompareDir, CONSTANTS.DIR_JSON),
+                  { recursive: true },
+                )
+                .catch(() => {}),
             ]);
 
             await Promise.all([
-              cleanJsonForComparison(path.join(stgCompareDir, CONSTANTS.DIR_JSON)),
-              cleanJsonForComparison(path.join(prdCompareDir, CONSTANTS.DIR_JSON)),
+              cleanJsonForComparison(
+                path.join(stgCompareDir, CONSTANTS.DIR_JSON),
+              ),
+              cleanJsonForComparison(
+                path.join(prdCompareDir, CONSTANTS.DIR_JSON),
+              ),
             ]);
 
             const relativeStgCompare = path.relative(pairDir, stgCompareDir);
@@ -264,7 +286,10 @@ const main = async () => {
           const groupDir = path.join(targetDir, g.group);
           await fs.mkdir(groupDir, { recursive: true });
 
-          const relativeToResultDirForGroup = path.relative(resultDir, groupDir);
+          const relativeToResultDirForGroup = path.relative(
+            resultDir,
+            groupDir,
+          );
           const stgGroupCompareDir = path.join(
             resultDir,
             CONSTANTS.DIR_WINMERGE_COMPARE,
@@ -278,8 +303,14 @@ const main = async () => {
             relativeToResultDirForGroup,
           );
 
-          const relativeStgGroupCompare = path.relative(groupDir, stgGroupCompareDir);
-          const relativePrdGroupCompare = path.relative(groupDir, prdGroupCompareDir);
+          const relativeStgGroupCompare = path.relative(
+            groupDir,
+            stgGroupCompareDir,
+          );
+          const relativePrdGroupCompare = path.relative(
+            groupDir,
+            prdGroupCompareDir,
+          );
 
           const winMergeContentForGroup = `<?xml version="1.0" encoding="UTF-8"?>
 <project>
@@ -305,9 +336,13 @@ const main = async () => {
             : "";
 
           if (isTopLevel) {
-            if (setting.workspaceConfig && Array.isArray(setting.workspaceConfig)) {
+            if (
+              setting.workspaceConfig &&
+              Array.isArray(setting.workspaceConfig)
+            ) {
               for (const config of setting.workspaceConfig) {
-                const workspaceFileName = config.fileName + CONSTANTS.SUFFIX_WORKSPACE;
+                const workspaceFileName =
+                  config.fileName + CONSTANTS.SUFFIX_WORKSPACE;
                 const { fileName, ...wsData } = config;
                 await fs.writeFile(
                   path.join(groupDir, workspaceFileName),
@@ -336,11 +371,6 @@ const main = async () => {
       await processAppsRecursive(setting.apps.ids, setting.apps.groups);
     }
 
-    const { enableAi } = setting;
-    if (enableAi) {
-      await resumeMain(resultDir, setting, promptTemplates);
-    }
-
     if (setting.workspaceConfig && setting.workspaceConfig.length > 0) {
       openWorkspace(
         path.join(
@@ -349,7 +379,7 @@ const main = async () => {
         ),
       );
     }
-    
+
     // 現在のsetting.jsonで指定されたmaxCacheCountを使用してcleanupを行う
     // ただしcleanupOldResultsはtimestampディレクトリごと削除するため、すべてのsettingFiles実行後にやるのが正しいです。
     // 今回は最も大きい maxCacheCount を使用して後で削除する処理に変更するか、
@@ -358,10 +388,10 @@ const main = async () => {
 
   // もし通常実行なら、不要な過去のタイムスタンプディレクトリを整理する。
   if (!isResumeMode) {
-     // maxCacheCount の取得 (デフォルトを利用)
-     let maxCount = CONSTANTS.DEFAULT_MAX_CACHE_COUNT;
-     // 本来は各設定の最大値を取るなどの工夫が必要ですが、簡単のため10とします。
-     await cleanupOldResults(baseResultDir, maxCount);
+    // maxCacheCount の取得 (デフォルトを利用)
+    let maxCount = CONSTANTS.DEFAULT_MAX_CACHE_COUNT;
+    // 本来は各設定の最大値を取るなどの工夫が必要ですが、簡単のため10とします。
+    await cleanupOldResults(baseResultDir, maxCount);
   }
 
   console.log(`\n=== すべての処理が完了しました ===`);

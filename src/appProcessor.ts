@@ -3,7 +3,7 @@ import fs from "fs/promises";
 import path from "path";
 import { exec } from "child_process";
 import { fetchKintoneApi, downloadKintoneFile, getEnvConfig } from "./kintone";
-import { Setting, MarkerMatch, PromptTemplate } from "./types";
+import { Setting, PromptTemplate } from "./types";
 import {
   generateLookupMd,
   generateViewMd,
@@ -13,56 +13,6 @@ import {
 } from "./mdGenerators";
 import { toSafeFileName, safeRunAsync, hasMeaningfulData } from "./utils";
 import { getPastResultDirs, minifyJs, writeErrorLog } from "./fileOps";
-
-/**
- * プロンプトテンプレートの読み込み
- */
-export const loadPromptTemplates = async (): Promise<PromptTemplate[]> => {
-  const promptTemplates: PromptTemplate[] = [];
-  const promptTemplatesDir = path.join(
-    process.cwd(),
-    CONSTANTS.DIR_PROMPT_TEMPLATES,
-  );
-  await safeRunAsync({
-    tryCallback: async () => {
-      const files = await fs.readdir(promptTemplatesDir);
-      const templateFiles = files
-        .filter((f) => f.endsWith(".md") || f.endsWith(".txt"))
-        .sort();
-      const templates = await Promise.all(
-        templateFiles.map(async (f) => ({
-          name: path.parse(f).name,
-          content: await fs.readFile(path.join(promptTemplatesDir, f), "utf-8"),
-        })),
-      );
-      promptTemplates.push(...templates);
-    },
-    catchCallback: async () => {
-      // ディレクトリが存在しない場合は無視して個別プロンプトの読み込みへ
-    },
-  });
-
-  if (promptTemplates.length === 0) {
-    const promptTemplatePath = path.join(
-      process.cwd(),
-      CONSTANTS.FILE_PROMPT_MD,
-    );
-    await safeRunAsync({
-      tryCallback: async () => {
-        promptTemplates.push({
-          name: "prompt",
-          content: await fs.readFile(promptTemplatePath, "utf-8"),
-        });
-      },
-      catchCallback: async () => {
-        console.warn(
-          "プロンプトテンプレートが見つからないため、プロンプト生成はスキップされます。",
-        );
-      },
-    });
-  }
-  return promptTemplates;
-};
 
 /**
  * ワークスペースを開く
@@ -76,106 +26,21 @@ export const openWorkspace = (workspacePath: string) => {
 
 const copyFilesUnderAppFolder = async (appDir: string) => {
   const sourceDir = path.join(process.cwd(), "filesUnderAppFolder");
-  const exists = await fs.access(sourceDir).then(() => true).catch(() => false);
+  const exists = await fs
+    .access(sourceDir)
+    .then(() => true)
+    .catch(() => false);
   if (!exists) return;
 
   const entries = await fs.readdir(sourceDir, { withFileTypes: true });
   for (const entry of entries) {
     const sourcePath = path.join(sourceDir, entry.name);
     const targetPath = path.join(appDir, entry.name);
-    await fs.cp(sourcePath, targetPath, { recursive: entry.isDirectory(), force: true });
+    await fs.cp(sourcePath, targetPath, {
+      recursive: entry.isDirectory(),
+      force: true,
+    });
   }
-};
-
-/**
- * 既存の結果フォルダに対してAI処理のみを再開する
- */
-export const resumeMain = async (
-  resultDir: string,
-  setting: Setting,
-  promptTemplates: PromptTemplate[],
-) => {
-  console.log(
-    `=== 既存の結果ディレクトリ (${path.basename(resultDir)}) を対象にAI処理を再開します ===`,
-  );
-  const baseResultDir = path.dirname(resultDir);
-
-  // 今回のディレクトリを除いた過去のディレクトリをキャッシュ対象にする
-  const pastDirsNames = await getPastResultDirs(baseResultDir);
-  const pastResultDirs = pastDirsNames
-    .filter((name) => name !== path.basename(resultDir))
-    .slice(0, setting.maxCacheCount || CONSTANTS.DEFAULT_MAX_CACHE_COUNT)
-    .map((name) => path.join(baseResultDir, name));
-
-  const processDirectory = async (dir: string) => {
-    const entries = await fs.readdir(dir, { withFileTypes: true });
-
-    // mergeFiles ディレクトリがある場合は、ここがアプリディレクトリであると判断
-    const mergeDir = path.join(dir, CONSTANTS.DIR_MERGE_FILES);
-    const hasMergeFiles = entries.some(
-      (e) => e.isDirectory() && e.name === CONSTANTS.DIR_MERGE_FILES,
-    );
-
-    if (hasMergeFiles) {
-      let appId: number | null = null;
-      const dirName = path.basename(dir);
-
-      // 1. ディレクトリ名から ID 取得を試みる
-      if (/^\d+_/.test(dirName)) {
-        appId = parseInt(dirName.split("_")[0]);
-      } else {
-        // 2. ディレクトリ名に ID がない場合（検証/本番フォルダなど）、json/app.json から取得を試みる
-        const appJsonPath = path.join(
-          dir,
-          CONSTANTS.DIR_JSON,
-          CONSTANTS.FILE_APP_JSON,
-        );
-        await safeRunAsync({
-          tryCallback: async () => {
-            const content = await fs.readFile(appJsonPath, "utf-8");
-            const appInfo = JSON.parse(content);
-            appId = parseInt(appInfo.appId || appInfo.id);
-          },
-          catchCallback: async () => {
-            // 取得失敗
-          },
-        });
-      }
-
-      if (appId) {
-        const appDirName = dirName;
-        const safeAppName = appDirName.includes("_")
-          ? appDirName.substring(appDirName.indexOf("_") + 1)
-          : appDirName;
-
-        await safeRunAsync({
-          tryCallback: async () => {
-            const files = await fs.readdir(mergeDir);
-            const jsFiles = files.filter(
-              (f) => f.endsWith(".js") && !f.endsWith(".min.js"),
-            );
-
-            for (const jsFile of jsFiles) {
-              console.log(
-                `[Resume] アプリ: ${appDirName}, ファイル: ${jsFile}`,
-              );
-            }
-          },
-        });
-        // アプリディレクトリとして処理した場合は、その下は探索しない
-        return;
-      }
-    }
-
-    // アプリディレクトリでない、または appId が取得できなかった場合は、サブディレクトリを探索
-    for (const entry of entries) {
-      if (entry.isDirectory()) {
-        await processDirectory(path.join(dir, entry.name));
-      }
-    }
-  };
-
-  await processDirectory(resultDir);
 };
 
 /**
@@ -186,10 +51,7 @@ export const processApp = async (
   setting: Setting,
   domain: string | undefined,
   resultDir: string,
-  pastResultDirs: string[],
-  promptTemplates: PromptTemplate[],
   appNameCache: Record<string, string>,
-  skipAi = false,
   overrideDirName?: string,
 ) => {
   console.log(`=== アプリID: ${appId} の処理を開始します ===`);
@@ -243,10 +105,6 @@ export const processApp = async (
         customizeInfo,
         domain,
         setting,
-        promptTemplates,
-        pastResultDirs,
-        safeAppName,
-        skipAi,
       );
 
       const writeJson = (filename: string, data: any) =>
@@ -477,10 +335,6 @@ const handleCustomizeFiles = async (
   customizeInfo: any,
   domain: string | undefined,
   setting: Setting,
-  promptTemplates: PromptTemplate[],
-  pastResultDirs: string[],
-  safeAppName: string,
-  skipAi = false,
 ) => {
   const scopes = ["desktop", "mobile"];
   const types = ["js", "css"];
@@ -527,11 +381,6 @@ const handleCustomizeFiles = async (
           type,
           filesToMerge,
           setting,
-          promptTemplates,
-          pastResultDirs,
-          safeAppName,
-          skipAi,
-          domain,
         );
       }
     }, Promise.resolve());
@@ -549,10 +398,6 @@ const processMergeAndAi = async (
   type: string,
   allFilePaths: string[],
   setting: Setting,
-  promptTemplates: PromptTemplate[],
-  pastResultDirs: string[],
-  safeAppName: string,
-  skipAi = false,
   domain?: string,
 ) => {
   const exclude = setting.excludeFromMerge || [];
@@ -663,4 +508,3 @@ const generateSpecificationToc = async (
   }
   await fs.writeFile(tocPath, tocContent, "utf-8");
 };
-
