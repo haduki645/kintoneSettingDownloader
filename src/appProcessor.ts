@@ -228,11 +228,11 @@ export const processApp = async (
         .then(() => true)
         .catch(() => false);
 
-      if (hasCustomizeJson && hasCustomizeDir) {
-        // Create .vscode folder
-        const vscodeDir = path.join(appDir, ".vscode");
-        await fs.mkdir(vscodeDir, { recursive: true });
+      // Create .vscode folder
+      const vscodeDir = path.join(appDir, ".vscode");
+      await fs.mkdir(vscodeDir, { recursive: true });
 
+      if (hasCustomizeJson && hasCustomizeDir) {
         // Generate customize-manifest.json
         const customizeJsonContent = await fs.readFile(
           customizeJsonPath,
@@ -294,6 +294,38 @@ export const processApp = async (
           "utf-8",
         );
       }
+
+      await fs.writeFile(
+        path.join(vscodeDir, "settings.json"),
+        JSON.stringify(
+          {
+            "openInExternalApp.openMapper": [
+              {
+                extensionName: "code-workspace",
+                apps: [
+                  {
+                    title: "code-workspace",
+                    openCommand:
+                      "c:\\Users\\usui\\AppData\\Local\\Programs\\Microsoft VS Code\\Code.exe",
+                  },
+                ],
+              },
+              {
+                extensionName: "WinMerge",
+                apps: [
+                  {
+                    title: "WinMerge",
+                    openCommand: "C:\\Program Files\\WinMerge\\WinMergeU.exe",
+                  },
+                ],
+              },
+            ],
+          },
+          null,
+          2,
+        ),
+        "utf-8",
+      );
 
       console.log(`=== アプリID: ${appId} の処理が完了しました ===\n`);
     },

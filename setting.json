@@ -418,18 +418,7 @@
         },
         "workbench.editorAssociations": {
           "*.md": "vscode.markdown.preview.editor"
-        },
-        "openInExternalApp.openMapper": [
-          {
-            "extensionName": "WinMerge",
-            "apps": [
-              {
-                "title": "WinMerge",
-                "openCommand": "C:\\Program Files\\WinMerge\\WinMergeU.exe"
-              }
-            ]
-          }
-        ]
+        }
       }
     },
     {
@@ -453,18 +442,7 @@
         },
         "workbench.editorAssociations": {
           "*.md": "vscode.markdown.preview.editor"
-        },
-        "openInExternalApp.openMapper": [
-          {
-            "extensionName": "WinMerge",
-            "apps": [
-              {
-                "title": "WinMerge",
-                "openCommand": "C:\\Program Files\\WinMerge\\WinMergeU.exe"
-              }
-            ]
-          }
-        ]
+        }
       }
     },
     {
@@ -491,18 +469,7 @@
         },
         "workbench.editorAssociations": {
           "*.md": "vscode.markdown.preview.editor"
-        },
-        "openInExternalApp.openMapper": [
-          {
-            "extensionName": "WinMerge",
-            "apps": [
-              {
-                "title": "WinMerge",
-                "openCommand": "C:\\Program Files\\WinMerge\\WinMergeU.exe"
-              }
-            ]
-          }
-        ]
+        }
       }
     }
   ]
