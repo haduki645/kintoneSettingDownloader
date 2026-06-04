@@ -1,7 +1,6 @@
 import { CONSTANTS } from "./constants";
 import fs from "fs/promises";
 import path from "path";
-import { minify } from "terser";
 import { formatTimestamp, errorToString, safeRunAsync } from "./utils";
 
 /**
@@ -175,29 +174,6 @@ export const getPastResultDirs = async (baseDir: string): Promise<string[]> => {
     },
     catchCallback: async () => {
       return [];
-    },
-  });
-};
-
-/**
- * JSファイルをミニファイする
- */
-export const minifyJs = async (content: string, outputPath: string) => {
-  return await safeRunAsync({
-    tryCallback: async () => {
-      const { code } = await minify(content);
-      if (code) {
-        await fs.writeFile(outputPath, code, "utf-8");
-        return true;
-      }
-      return false;
-    },
-    catchCallback: async (minifyErr) => {
-      console.error(
-        `  [Error] ミニファイに失敗しました: ${path.basename(outputPath)}`,
-        minifyErr,
-      );
-      return false;
     },
   });
 };

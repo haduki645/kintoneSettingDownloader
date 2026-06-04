@@ -7,12 +7,10 @@
   "settings": {
     "files.exclude": {
       "**/本番/": true,
+      "**/.vscode": true,
       "**/.winmerge比較用/": true,
       "**/json": true,
-      "**/desktop_merge.min.js": true,
-      "**/desktop_merge.css": true,
       "**/customize/": true,
-      "**/prompts/": true,
       "**/js-global-viewer.json": true,
     },
     "workbench.editorAssociations": {

@@ -7,7 +7,7 @@
   "settings": {
     "files.exclude": {
       "**/本番/": true,
-      "**/prompts/": true,
+      "**/.vscode": true,
       "**/*.md": true,
       "**/json/": true,
       "**/.winmerge比較用/": true,
