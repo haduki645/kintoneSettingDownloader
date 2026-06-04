@@ -29,10 +29,6 @@ node dist/index.js setting.json
 
 # 複数の設定ファイルを連続で実行
 node dist/index.js setting1.json setting2.json
-
-# レジューム（再開）モードでの実行
-# （途中で処理が止まった場合、最新の出力フォルダに対して処理を再開します）
-node dist/index.js --resume setting.json
 ```
 
 ## env (.env)

@@ -8,7 +8,7 @@ export const CONSTANTS = {
   DIR_PROMPTS_RESULTS: "prompts_results",
   DIR_PROMPTS: "prompts",
   DIR_WINMERGE_COMPARE: ".winmerge比較用",
-  
+
   // Environment Labels
   ENV_STG: "検証",
   ENV_PRD: "本番",
@@ -37,10 +37,10 @@ export const CONSTANTS = {
   FILE_NOTIFICATION_MD: "notification.md",
   FILE_LOOKUP_RELATION_MD: "lookup_relation.md",
   FILE_FUNCTION_LIST_MD: "機能一覧.md",
-  
+
   FILE_URL_SHORTCUT: "kintoneアプリへ移動.url",
   FILE_WINMERGE_PROJECT: "検証_vs_本番.WinMerge",
-  
+
   // File Suffixes
   SUFFIX_WORKSPACE: ".code-workspace",
 
@@ -59,7 +59,4 @@ export const CONSTANTS = {
   API_ACTIONS: "/k/v1/app/actions.json",
   API_PLUGINS: "/k/v1/app/plugins.json",
   API_FILE: "/k/v1/file.json",
-
-  // Defaults
-  DEFAULT_MAX_CACHE_COUNT: 5,
 };

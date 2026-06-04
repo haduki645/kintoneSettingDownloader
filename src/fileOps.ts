@@ -180,31 +180,6 @@ export const getPastResultDirs = async (baseDir: string): Promise<string[]> => {
 };
 
 /**
- * 古い結果ディレクトリを削除する
- */
-export const cleanupOldResults = async (
-  baseDir: string,
-  maxCacheCount: number,
-) => {
-  await safeRunAsync({
-    tryCallback: async () => {
-      const dirs = await getPastResultDirs(baseDir);
-      const toDelete = dirs.slice(maxCacheCount);
-
-      await Promise.all(
-        toDelete.map(async (dirName) => {
-          await fs.rm(path.join(baseDir, dirName), {
-            recursive: true,
-            force: true,
-          });
-          console.log(`[Info] 古い結果フォルダを削除しました: ${dirName}`);
-        }),
-      );
-    },
-  });
-};
-
-/**
  * JSファイルをミニファイする
  */
 export const minifyJs = async (content: string, outputPath: string) => {

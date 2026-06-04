@@ -6,26 +6,20 @@ import { Setting, AppGroup, AppId } from "./types";
 import {
   getTimestampedDirName,
   getPastResultDirs,
-  cleanupOldResults,
   getReadmeContent,
   cleanJsonForComparison,
 } from "./fileOps";
-import { openWorkspace,  processApp } from "./appProcessor";
+import { openWorkspace, processApp } from "./appProcessor";
 import { safeRunAsync, toSafeFileName } from "./utils";
 
 // メイン処理
 const main = async () => {
   const { values, positionals } = parseArgs({
     args: process.argv.slice(2),
-    options: {
-      resume: {
-        type: "boolean",
-      },
-    },
+    options: {},
     allowPositionals: true,
   });
 
-  const isResumeMode = values.resume || false;
   const settingFiles =
     positionals.length > 0 ? positionals : [CONSTANTS.FILE_SETTING_JSON];
 
@@ -35,18 +29,7 @@ const main = async () => {
   const currentTimestampDirName = getTimestampedDirName();
   let activeTimestampDir = path.join(baseResultDir, currentTimestampDirName);
 
-  if (isResumeMode) {
-    if (pastDirsNames.length === 0) {
-      console.error("再開対象となる過去の結果ディレクトリが見つかりません。");
-      return;
-    }
-    activeTimestampDir = path.join(baseResultDir, pastDirsNames[0]);
-    console.log(
-      `\n=== Resume Mode: ${path.basename(activeTimestampDir)} を対象に再開します ===`,
-    );
-  } else {
-    await fs.mkdir(activeTimestampDir, { recursive: true });
-  }
+  await fs.mkdir(activeTimestampDir, { recursive: true });
 
   // 設定ごとのループ
   for (const settingFileName of settingFiles) {
@@ -379,19 +362,6 @@ const main = async () => {
         ),
       );
     }
-
-    // 現在のsetting.jsonで指定されたmaxCacheCountを使用してcleanupを行う
-    // ただしcleanupOldResultsはtimestampディレクトリごと削除するため、すべてのsettingFiles実行後にやるのが正しいです。
-    // 今回は最も大きい maxCacheCount を使用して後で削除する処理に変更するか、
-    // 既存の実装のように単一の削除処理を維持するため、ループの外でやります。
-  }
-
-  // もし通常実行なら、不要な過去のタイムスタンプディレクトリを整理する。
-  if (!isResumeMode) {
-    // maxCacheCount の取得 (デフォルトを利用)
-    let maxCount = CONSTANTS.DEFAULT_MAX_CACHE_COUNT;
-    // 本来は各設定の最大値を取るなどの工夫が必要ですが、簡単のため10とします。
-    await cleanupOldResults(baseResultDir, maxCount);
   }
 
   console.log(`\n=== すべての処理が完了しました ===`);
