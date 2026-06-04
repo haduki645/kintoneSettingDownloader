@@ -409,7 +409,7 @@
       "settings": {
         "files.exclude": {
           "**/本番/": true,
-          "**/winmerge比較用/": true,
+          "**/.winmerge比較用/": true,
           "**/json": true,
           "**/desktop_merge.min.js": true,
           "**/desktop_merge.css": true,
@@ -422,7 +422,7 @@
       }
     },
     {
-      "fileName": "JsCss確認用",
+      "fileName": "JsCss確認・修正用",
       "folders": [
         {
           "path": "."
@@ -435,7 +435,7 @@
           "**/prompts/": true,
           "**/*.md": true,
           "**/json/": true,
-          "**/winmerge比較用/": true,
+          "**/.winmerge比較用/": true,
           "**/*.code-workspace": true,
           "**/*.url": true,
           "**/*.WinMerge": true
@@ -462,7 +462,7 @@
           "**/json/layout.json": true,
           "**/json/plugins.json": true,
           "**/json/customize.json": true,
-          "**/winmerge比較用/": true,
+          "**/.winmerge比較用/": true,
           "**/*.code-workspace": true,
           "**/*.url": true,
           "**/*.WinMerge": true

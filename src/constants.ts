@@ -7,7 +7,7 @@ export const CONSTANTS = {
   DIR_CUSTOMIZE: "customize",
   DIR_PROMPTS_RESULTS: "prompts_results",
   DIR_PROMPTS: "prompts",
-  DIR_WINMERGE_COMPARE: "winmerge比較用",
+  DIR_WINMERGE_COMPARE: ".winmerge比較用",
   
   // Environment Labels
   ENV_STG: "検証",

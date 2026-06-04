@@ -21,6 +21,7 @@ export const cleanJsonForComparison = async (jsonDir: string) => {
         CONSTANTS.FILE_NOTIF_GENERAL_JSON,
         CONSTANTS.FILE_NOTIF_RECORD_JSON,
         CONSTANTS.FILE_NOTIF_REMINDER_JSON,
+        CONSTANTS.FILE_PLUGINS_JSON,
       ];
       if (excludeFiles.includes(file)) {
         await fs.unlink(filePath);
@@ -29,7 +30,7 @@ export const cleanJsonForComparison = async (jsonDir: string) => {
 
       const content = await fs.readFile(filePath, "utf-8");
       const obj = JSON.parse(content);
-      
+
       // 1. 全ファイル共通: revisionの削除
       if (obj.revision !== undefined) {
         delete obj.revision;
@@ -45,7 +46,9 @@ export const cleanJsonForComparison = async (jsonDir: string) => {
         }
 
         // indexの昇順で並び替える
-        viewKeys.sort((a, b) => Number(obj.views[a].index) - Number(obj.views[b].index));
+        viewKeys.sort(
+          (a, b) => Number(obj.views[a].index) - Number(obj.views[b].index),
+        );
 
         const sortedViews: any = {};
         for (const key of viewKeys) {
@@ -60,7 +63,11 @@ export const cleanJsonForComparison = async (jsonDir: string) => {
           if (Array.isArray(node)) {
             node.forEach(removeRelatedAppId);
           } else if (node && typeof node === "object") {
-            if (node.relatedApp && typeof node.relatedApp === "object" && node.relatedApp.app !== undefined) {
+            if (
+              node.relatedApp &&
+              typeof node.relatedApp === "object" &&
+              node.relatedApp.app !== undefined
+            ) {
               delete node.relatedApp.app;
             }
             Object.values(node).forEach(removeRelatedAppId);
@@ -70,7 +77,7 @@ export const cleanJsonForComparison = async (jsonDir: string) => {
 
         const sortObjectKeys = (parentKey: string | null, node: any): any => {
           if (Array.isArray(node)) {
-            const newArray = node.map(item => sortObjectKeys(null, item));
+            const newArray = node.map((item) => sortObjectKeys(null, item));
             if (parentKey === "fieldMappings") {
               newArray.sort((a, b) => {
                 if (a.field && b.field) {
@@ -82,13 +89,20 @@ export const cleanJsonForComparison = async (jsonDir: string) => {
             return newArray;
           } else if (node !== null && typeof node === "object") {
             const keys = Object.keys(node);
-            
-            const isIndexSort = keys.length > 0 && keys.every(k => 
-              typeof node[k] === "object" && node[k] !== null && node[k].index !== undefined
-            );
-            
+
+            const isIndexSort =
+              keys.length > 0 &&
+              keys.every(
+                (k) =>
+                  typeof node[k] === "object" &&
+                  node[k] !== null &&
+                  node[k].index !== undefined,
+              );
+
             if (isIndexSort) {
-              keys.sort((a, b) => Number(node[a].index) - Number(node[b].index));
+              keys.sort(
+                (a, b) => Number(node[a].index) - Number(node[b].index),
+              );
             } else {
               keys.sort();
             }
@@ -120,6 +134,20 @@ export const cleanJsonForComparison = async (jsonDir: string) => {
         removeUnnecessaryFileProps(obj);
       }
 
+      // 5. actions.json: id, app を削除
+      if (file === CONSTANTS.FILE_ACTIONS_JSON) {
+        const removeUnnecessaryFileProps = (node: any) => {
+          if (Array.isArray(node)) {
+            node.forEach(removeUnnecessaryFileProps);
+          } else if (node && typeof node === "object") {
+            if (node.id !== undefined) delete node.id;
+            if (node.app !== undefined) delete node.app;
+            Object.values(node).forEach(removeUnnecessaryFileProps);
+          }
+        };
+        removeUnnecessaryFileProps(obj);
+      }
+
       await fs.writeFile(filePath, JSON.stringify(obj, null, 2), "utf-8");
     } catch (e) {
       console.error(`Failed to clean JSON for comparison: ${filePath}`, e);
@@ -140,33 +168,41 @@ export const getPastResultDirs = async (baseDir: string): Promise<string[]> => {
     tryCallback: async () => {
       const entries = await fs.readdir(baseDir, { withFileTypes: true });
       return entries
-        .filter(e => e.isDirectory() && /^\d{8}_\d{6}$/.test(e.name))
-        .map(e => e.name)
+        .filter((e) => e.isDirectory() && /^\d{8}_\d{6}$/.test(e.name))
+        .map((e) => e.name)
         .sort()
         .reverse();
     },
     catchCallback: async () => {
       return [];
-    }
+    },
   });
-}
+};
 
 /**
  * 古い結果ディレクトリを削除する
  */
-export const cleanupOldResults = async (baseDir: string, maxCacheCount: number) => {
+export const cleanupOldResults = async (
+  baseDir: string,
+  maxCacheCount: number,
+) => {
   await safeRunAsync({
     tryCallback: async () => {
       const dirs = await getPastResultDirs(baseDir);
       const toDelete = dirs.slice(maxCacheCount);
-      
-      await Promise.all(toDelete.map(async dirName => {
-        await fs.rm(path.join(baseDir, dirName), { recursive: true, force: true });
-        console.log(`[Info] 古い結果フォルダを削除しました: ${dirName}`);
-      }));
-    }
+
+      await Promise.all(
+        toDelete.map(async (dirName) => {
+          await fs.rm(path.join(baseDir, dirName), {
+            recursive: true,
+            force: true,
+          });
+          console.log(`[Info] 古い結果フォルダを削除しました: ${dirName}`);
+        }),
+      );
+    },
   });
-}
+};
 
 /**
  * JSファイルをミニファイする
@@ -182,24 +218,33 @@ export const minifyJs = async (content: string, outputPath: string) => {
       return false;
     },
     catchCallback: async (minifyErr) => {
-      console.error(`  [Error] ミニファイに失敗しました: ${path.basename(outputPath)}`, minifyErr);
+      console.error(
+        `  [Error] ミニファイに失敗しました: ${path.basename(outputPath)}`,
+        minifyErr,
+      );
       return false;
-    }
+    },
   });
-}
+};
 
 /**
  * エラーログをファイルに書き出す
  */
-export const writeErrorLog = async (resultDir: string, message: string, error?: any) => {
+export const writeErrorLog = async (
+  resultDir: string,
+  message: string,
+  error?: any,
+) => {
   const logPath = path.join(resultDir, "error.log");
   const nowStr = new Date().toLocaleString("ja-JP");
-  
+
   const logContent = [
     `[${nowStr}] ${message}`,
     error ? errorToString(error) : null,
-    "--------------------------------------------------\n"
-  ].filter(Boolean).join("\n");
+    "--------------------------------------------------\n",
+  ]
+    .filter(Boolean)
+    .join("\n");
 
   await safeRunAsync({
     tryCallback: async () => {
@@ -207,9 +252,9 @@ export const writeErrorLog = async (resultDir: string, message: string, error?: 
     },
     catchCallback: async (err) => {
       console.error("エラーログの書き込みに失敗しました:", err);
-    }
+    },
   });
-}
+};
 
 /**
  * readme.mdの内容を取得
@@ -240,4 +285,4 @@ export const getReadmeContent = (): string => {
 - \`prompts_results/\`: AI によって生成された回答（仕様書）が保存されるフォルダ
 - \`error.log\`: 実行中にエラーが発生した場合に出力されるログファイル
 `;
-}
+};
