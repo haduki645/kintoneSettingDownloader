@@ -279,7 +279,7 @@ export const processApp = async (
             {
               label: "kintone: upload customize files",
               type: "shell",
-              command: `npx @kintone/cli-kintone customize apply --base-url "${config.baseUrl}" --app "${appId}" --username "${config.username}" --password "${config.password}" --input customize-manifest.json`,
+              command: `cli-kintone customize apply --yes --base-url "${config.baseUrl}" --app "${appId}" --username "${config.username}" --password "${config.password}" --input customize-manifest.json`,
               group: {
                 kind: "build",
                 isDefault: true,

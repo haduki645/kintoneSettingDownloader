@@ -1,9 +1,4 @@
 {
-  "jsPaths": [
-    "customize/desktop/js"
-  ],
-  "ignorePaths": [
-    "node_modules",
-    ".git"
-  ]
+  "jsPaths": ["customize/desktop/js"],
+  "ignorePaths": []
 }
