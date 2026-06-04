@@ -231,33 +231,40 @@ export const writeErrorLog = async (
   });
 };
 
-/**
- * readme.mdの内容を取得
- */
-export const getReadmeContent = (): string => {
-  return `# ダウンロードされたファイルの説明
+export const copyFilesUnderGroupFolder = async (groupDir: string) => {
+  const sourceDir = path.join(process.cwd(), "2.グループ直下にコピー");
+  const exists = await fs
+    .access(sourceDir)
+    .then(() => true)
+    .catch(() => false);
+  if (!exists) return;
 
-各アプリフォルダ内にダウンロードされるJSONファイルおよびディレクトリの意味は以下の通りです。
+  const entries = await fs.readdir(sourceDir, { withFileTypes: true });
+  for (const entry of entries) {
+    const sourcePath = path.join(sourceDir, entry.name);
+    const targetPath = path.join(groupDir, entry.name);
+    await fs.cp(sourcePath, targetPath, {
+      recursive: entry.isDirectory(),
+      force: true,
+    });
+  }
+};
 
-- \`json/app.json\`: アプリの基本情報（アプリ名、説明、アイコンなど） / API: \`/k/v1/app.json\`
-- \`json/fields.json\`: フォームフィールド情報（各フィールドのタイプ、コード、設定など） / API: \`/k/v1/app/form/fields.json\`
-- \`json/views.json\`: 一覧設定情報（各一覧の表示形式、条件、フィールドなど） / API: \`/k/v1/app/views.json\`
-- \`json/customize.json\`: カスタマイズ情報（適用されているJavaScript/CSSファイルの設定など） / API: \`/k/v1/app/customize.json\`
-- \`json/appAcl.json\`: アプリのアクセス権設定 / API: \`/k/v1/app/acl.json\`
-- \`json/recordAcl.json\`: レコードのアクセス権設定 / API: \`/k/v1/record/acl.json\`
-- \`json/fieldAcl.json\`: フィールドのアクセス権設定 / API: \`/k/v1/field/acl.json\`
-- \`json/notificationsGeneral.json\`: アプリの条件通知設定 / API: \`/k/v1/app/notifications/general.json\`
-- \`json/notificationsPerRecord.json\`: レコードの条件通知設定 / API: \`/k/v1/app/notifications/perRecord.json\`
-- \`json/notificationsReminder.json\`: リマインダーの条件通知設定 / API: \`/k/v1/app/notifications/reminder.json\`
-- \`json/actions.json\`: アプリアクション設定 / API: \`/k/v1/app/actions.json\`
-- \`json/plugins.json\`: プラグイン設定 / API: \`/k/v1/app/plugins.json\`
-- \`lookup_relation.md\`: ルックアップ設定がされている場合に作成される関係一覧
-- \`view.md\`: アプリの一覧設定（絞り込み条件など）と各一覧へのリンク
-- \`acl.md\`: アプリ、レコード、フィールドのアクセス権設定一覧（設定が無い場合は未出力）
-- \`notification.md\`: アプリ、レコード、リマインダーの通知設定一覧（設定が無い場合は未出力）
-- \`customize/\`: \`customize.json\` で設定されているJavaScript/CSSファイルの実体が保存されるフォルダ / API: \`/k/v1/file.json\`
-- \`mergeFiles/\`: マージおよびミニファイされたJavaScript/CSSファイルが保存されるフォルダ
-- \`prompts_results/\`: AI によって生成された回答（仕様書）が保存されるフォルダ
-- \`error.log\`: 実行中にエラーが発生した場合に出力されるログファイル
-`;
+export const copyFilesUnderTopFolder = async (topDir: string) => {
+  const sourceDir = path.join(process.cwd(), "1.トップ直下にコピー");
+  const exists = await fs
+    .access(sourceDir)
+    .then(() => true)
+    .catch(() => false);
+  if (!exists) return;
+
+  const entries = await fs.readdir(sourceDir, { withFileTypes: true });
+  for (const entry of entries) {
+    const sourcePath = path.join(sourceDir, entry.name);
+    const targetPath = path.join(topDir, entry.name);
+    await fs.cp(sourcePath, targetPath, {
+      recursive: entry.isDirectory(),
+      force: true,
+    });
+  }
 };

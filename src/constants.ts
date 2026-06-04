@@ -2,7 +2,6 @@ export const CONSTANTS = {
   // Directory Names
   DIR_RESULT: "result",
   DIR_PROMPT_TEMPLATES: "prompt_templates",
-  DIR_MERGE_FILES: "mergeFiles",
   DIR_JSON: "json",
   DIR_CUSTOMIZE: "customize",
   DIR_PROMPTS_RESULTS: "prompts_results",
@@ -15,7 +14,6 @@ export const CONSTANTS = {
 
   // File Names
   FILE_SETTING_JSON: "setting.json",
-  FILE_README_MD: "readme.md",
   FILE_PROMPT_MD: "prompt.md",
   FILE_APP_JSON: "app.json",
   FILE_FIELDS_JSON: "fields.json",

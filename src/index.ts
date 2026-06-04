@@ -6,10 +6,11 @@ import { Setting, AppGroup, AppId } from "./types";
 import {
   getTimestampedDirName,
   getPastResultDirs,
-  getReadmeContent,
   cleanJsonForComparison,
+  copyFilesUnderGroupFolder,
+  copyFilesUnderTopFolder,
 } from "./fileOps";
-import { openWorkspace, processApp } from "./appProcessor";
+import { processApp } from "./appProcessor";
 import { safeRunAsync, toSafeFileName } from "./utils";
 
 // メイン処理
@@ -62,30 +63,7 @@ const main = async () => {
 
     console.log(`\n--- [処理開始] ${settingFileName} ---`);
     await fs.mkdir(resultDir, { recursive: true });
-    await fs.writeFile(
-      path.join(resultDir, CONSTANTS.FILE_README_MD),
-      getReadmeContent(),
-      "utf-8",
-    );
-
-    const { workspaceConfig } = setting;
-    if (workspaceConfig && Array.isArray(workspaceConfig)) {
-      for (const config of workspaceConfig) {
-        if (!config.fileName) {
-          throw new Error(
-            "workspaceConfig の要素に fileName が指定されていません。",
-          );
-        }
-        const workspaceFileName = config.fileName + CONSTANTS.SUFFIX_WORKSPACE;
-        const { fileName, ...wsData } = config;
-        await fs.writeFile(
-          path.join(resultDir, workspaceFileName),
-          JSON.stringify(wsData, null, 2),
-          "utf-8",
-        );
-        console.log(`[OK] ${workspaceFileName} を作成しました。`);
-      }
-    }
+    await copyFilesUnderTopFolder(resultDir);
 
     const globalWinMergeContent = `<?xml version="1.0" encoding="UTF-8"?>
 <project>
@@ -268,6 +246,7 @@ const main = async () => {
         for (const g of groups) {
           const groupDir = path.join(targetDir, g.group);
           await fs.mkdir(groupDir, { recursive: true });
+          await copyFilesUnderGroupFolder(groupDir);
 
           const relativeToResultDirForGroup = path.relative(
             resultDir,
@@ -312,29 +291,10 @@ const main = async () => {
             "utf-8",
           );
 
-          const isTopLevel = !topLevelGroupDir;
           const currentTopLevelGroupDir = topLevelGroupDir || groupDir;
           const currentRelativeGroupPath = topLevelGroupDir
             ? path.join(relativeGroupPath, g.group)
             : "";
-
-          if (isTopLevel) {
-            if (
-              setting.workspaceConfig &&
-              Array.isArray(setting.workspaceConfig)
-            ) {
-              for (const config of setting.workspaceConfig) {
-                const workspaceFileName =
-                  config.fileName + CONSTANTS.SUFFIX_WORKSPACE;
-                const { fileName, ...wsData } = config;
-                await fs.writeFile(
-                  path.join(groupDir, workspaceFileName),
-                  JSON.stringify(wsData, null, 2),
-                  "utf-8",
-                );
-              }
-            }
-          }
 
           await processAppsRecursive(
             g.ids,
@@ -352,15 +312,6 @@ const main = async () => {
     }
     if (setting.apps) {
       await processAppsRecursive(setting.apps.ids, setting.apps.groups);
-    }
-
-    if (setting.workspaceConfig && setting.workspaceConfig.length > 0) {
-      openWorkspace(
-        path.join(
-          resultDir,
-          setting.workspaceConfig.at(0)!.fileName + CONSTANTS.SUFFIX_WORKSPACE,
-        ),
-      );
     }
   }
 

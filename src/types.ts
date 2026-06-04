@@ -6,12 +6,6 @@ export interface AppGroup {
   groups?: AppGroup[];
 }
 
-export interface WorkspaceConfig {
-  fileName: string;
-  folders: any[];
-  settings: any;
-}
-
 export interface Setting {
   stgDomain?: string;
   prdDomain?: string;
@@ -21,7 +15,6 @@ export interface Setting {
     groups?: AppGroup[];
   };
   excludeFromMerge?: string[];
-  workspaceConfig?: WorkspaceConfig[];
   maxCacheCount?: number;
 }
 
@@ -31,7 +24,6 @@ export interface KintoneEnvConfig {
   username?: string;
   password?: string;
 }
-
 
 export interface MarkerMatch {
   functionalName: string;

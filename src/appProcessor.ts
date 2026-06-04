@@ -1,9 +1,8 @@
 import { CONSTANTS } from "./constants";
 import fs from "fs/promises";
 import path from "path";
-import { exec } from "child_process";
 import { fetchKintoneApi, downloadKintoneFile, getEnvConfig } from "./kintone";
-import { Setting, PromptTemplate } from "./types";
+import { Setting } from "./types";
 import {
   generateLookupMd,
   generateViewMd,
@@ -12,20 +11,10 @@ import {
   generateFormMd,
 } from "./mdGenerators";
 import { toSafeFileName, safeRunAsync, hasMeaningfulData } from "./utils";
-import { getPastResultDirs, minifyJs, writeErrorLog } from "./fileOps";
-
-/**
- * ワークスペースを開く
- */
-export const openWorkspace = (workspacePath: string) => {
-  console.log(`[Info] ${path.basename(workspacePath)} を開きます...`);
-  exec(`code "${workspacePath}"`, (err) => {
-    if (err) exec(`start "" "${workspacePath}"`);
-  });
-};
+import { writeErrorLog } from "./fileOps";
 
 const copyFilesUnderAppFolder = async (appDir: string) => {
-  const sourceDir = path.join(process.cwd(), "filesUnderAppFolder");
+  const sourceDir = path.join(process.cwd(), "3.アプリ直下にコピー");
   const exists = await fs
     .access(sourceDir)
     .then(() => true)
@@ -82,20 +71,6 @@ export const processApp = async (
         urlContent,
         "utf-8",
       );
-
-      // .code-workspace の作成
-      if (setting.workspaceConfig && Array.isArray(setting.workspaceConfig)) {
-        for (const config of setting.workspaceConfig) {
-          const workspaceFileName =
-            config.fileName + CONSTANTS.SUFFIX_WORKSPACE;
-          const { fileName, ...wsData } = config;
-          await fs.writeFile(
-            path.join(appDir, workspaceFileName),
-            JSON.stringify(wsData, null, 2),
-            "utf-8",
-          );
-        }
-      }
 
       // 2. AI処理（カスタマイズファイルのDL含む）と、その他のメタデータDLを並列実行
       const aiTask = handleCustomizeFiles(
@@ -547,20 +522,9 @@ const processMergeAndAi = async (
 
   const mergedContent = mergedHeader + bodyParts.join("");
 
-  const mergeDir = path.join(appDir, CONSTANTS.DIR_MERGE_FILES);
-  await fs.mkdir(mergeDir, { recursive: true });
-  const outputFileName = `${scope}_merge.${type}`;
-  await fs.writeFile(
-    path.join(mergeDir, outputFileName),
-    mergedContent,
-    "utf-8",
-  );
-
   if (type === "js") {
     // 目次生成 (AIの有無に関わらず実行)
     await generateSpecificationToc(appDir, mergedContent);
-
-    await minifyJs(mergedContent, path.join(mergeDir, `${scope}_merge.min.js`));
   }
 };
 
