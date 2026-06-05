@@ -96,8 +96,8 @@ const main = async () => {
           if (typeof appId === "number") {
             await processApp(
               appId,
-              setting,
               setting.prdDomain || setting.stgDomain, // default domain for individual app
+              targetDir,
               appNameCache,
             );
           } else {
@@ -314,7 +314,7 @@ const main = async () => {
   console.log(`\n=== すべての処理が完了しました ===`);
 
   // 作成したフォルダを開く
-  exec(activeTimestampDir);
+  exec(`explorer "${activeTimestampDir}"`);
 };
 
 // 実行

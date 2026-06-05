@@ -17,6 +17,7 @@
       "**/*.code-workspace": true,
       "**/*.url": true,
       "**/*.WinMerge": true,
+      "**/customize-manifest.json": true,
       "**/js-global-viewer.json": true,
     },
     "workbench.editorAssociations": {
