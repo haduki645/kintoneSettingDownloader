@@ -12,6 +12,7 @@
       "**/json": true,
       "**/customize/": true,
       "**/js-global-viewer.json": true,
+      "**/customize-manifest.json": true,
     },
     "workbench.editorAssociations": {
       "*.md": "vscode.markdown.preview.editor",

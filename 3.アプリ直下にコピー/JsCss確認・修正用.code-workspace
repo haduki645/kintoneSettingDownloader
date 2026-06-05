@@ -10,7 +10,6 @@
       "**/*.md": true,
       "**/json/": true,
       "**/.winmerge比較用/": true,
-      "**/*.code-workspace": true,
       "**/*.url": true,
       "**/*.WinMerge": true,
       "**/js-global-viewer.json": true,
