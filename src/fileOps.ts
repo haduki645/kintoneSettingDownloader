@@ -160,25 +160,6 @@ export const cleanJsonForComparison = async (jsonDir: string) => {
 export const getTimestampedDirName = (): string => formatTimestamp(new Date());
 
 /**
- * 過去の結果ディレクトリ一覧を取得する（降順）
- */
-export const getPastResultDirs = async (baseDir: string): Promise<string[]> => {
-  return await safeRunAsync({
-    tryCallback: async () => {
-      const entries = await fs.readdir(baseDir, { withFileTypes: true });
-      return entries
-        .filter((e) => e.isDirectory() && /^\d{8}_\d{6}$/.test(e.name))
-        .map((e) => e.name)
-        .sort()
-        .reverse();
-    },
-    catchCallback: async () => {
-      return [];
-    },
-  });
-};
-
-/**
  * エラーログをファイルに書き出す
  */
 export const writeErrorLog = async (

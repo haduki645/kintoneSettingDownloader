@@ -63,7 +63,6 @@ KINTONE_PASSWORD_2=comture2023
 
 - `stgDomain` / `prdDomain`: この設定ファイルで使用するドメイン。`.env` で設定した `KINTONE_BASE_URL` と一致するものが自動で選択されます。
 - `apps`: ダウンロード対象の kintone アプリ。環境ごとのID (`stg`, `prd`) のペアや単一のID、階層化されたグループ構成 (`groups`) を指定できます。
-- `excludeFromMerge`: マージ処理から除外したいファイル名の配列。外部ライブラリや、個別に管理したい共通設定ファイルなどを指定します。
 
 ### 設定例
 
@@ -90,11 +89,6 @@ KINTONE_PASSWORD_2=comture2023
         ]
       }
     ]
-  },
-  "excludeFromMerge": [
-    "010_config.js",
-    "020_pastRecord.js",
-    "KintoneRestAPIClient_v2.0.35.min.js"
-  ],
+  }
 }
 ```

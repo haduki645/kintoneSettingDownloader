@@ -37,7 +37,6 @@ const copyFilesUnderAppFolder = async (appDir: string) => {
  */
 export const processApp = async (
   appId: number,
-  setting: Setting,
   domain: string | undefined,
   resultDir: string,
   appNameCache: Record<string, string>,
@@ -74,12 +73,9 @@ export const processApp = async (
 
       // 2. AI処理（カスタマイズファイルのDL含む）と、その他のメタデータDLを並列実行
       const aiTask = handleCustomizeFiles(
-        appId,
-        appName,
         appDir,
         customizeInfo,
         domain,
-        setting,
       );
 
       const writeJson = (filename: string, data: any) =>
@@ -416,15 +412,12 @@ const handleLookups = async (
 };
 
 /**
- * カスタマイズファイルのDLとAI処理
+ * カスタマイズファイルのDL
  */
 const handleCustomizeFiles = async (
-  appId: number,
-  appName: string,
   appDir: string,
   customizeInfo: any,
   domain: string | undefined,
-  setting: Setting,
 ) => {
   const scopes = ["desktop", "mobile"];
   const types = ["js", "css"];
@@ -436,96 +429,31 @@ const handleCustomizeFiles = async (
       await typePromise;
       const items = customizeInfo[scope]?.[type] || [];
 
-      const filesToMerge = (
-        await Promise.all(
-          items.map(async (item: any) => {
-            const { type: itemType, file } = item;
-            if (itemType !== "FILE" || !file?.fileKey) return null;
+      await Promise.all(
+        items.map(async (item: any) => {
+          const { type: itemType, file } = item;
+          if (itemType !== "FILE" || !file?.fileKey) return null;
 
-            const { name: fileName, fileKey } = file;
-            const targetDir = path.join(customizeDir, scope, type);
-            await fs.mkdir(targetDir, { recursive: true });
-            const targetPath = path.join(targetDir, toSafeFileName(fileName));
-            try {
-              const data = await downloadKintoneFile(fileKey, domain);
-              await fs.writeFile(targetPath, data);
-              return targetPath;
-            } catch (e) {
-              await writeErrorLog(
-                appDir,
-                `ファイルのダウンロードまたは保存に失敗しました: ${fileName}`,
-                e,
-              );
-            }
-            return null;
-          }),
-        )
-      ).filter((p): p is string => p !== null);
-
-      if (filesToMerge.length > 0) {
-        await processMergeAndAi(
-          appId,
-          appName,
-          appDir,
-          scope,
-          type,
-          filesToMerge,
-          setting,
-        );
-      }
+          const { name: fileName, fileKey } = file;
+          const targetDir = path.join(customizeDir, scope, type);
+          await fs.mkdir(targetDir, { recursive: true });
+          const targetPath = path.join(targetDir, toSafeFileName(fileName));
+          try {
+            const data = await downloadKintoneFile(fileKey, domain);
+            await fs.writeFile(targetPath, data);
+            return targetPath;
+          } catch (e) {
+            await writeErrorLog(
+              appDir,
+              `ファイルのダウンロードまたは保存に失敗しました: ${fileName}`,
+              e,
+            );
+          }
+          return null;
+        }),
+      );
     }, Promise.resolve());
   }, Promise.resolve());
-};
-
-/**
- * マージとAI処理
- */
-const processMergeAndAi = async (
-  appId: number,
-  appName: string,
-  appDir: string,
-  scope: string,
-  type: string,
-  allFilePaths: string[],
-  setting: Setting,
-  domain?: string,
-) => {
-  const exclude = setting.excludeFromMerge || [];
-  const files = allFilePaths
-    .filter((p) => !exclude.includes(path.basename(p)))
-    .sort();
-  const excluded = allFilePaths
-    .filter((p) => exclude.includes(path.basename(p)))
-    .sort();
-
-  const baseUrl = getEnvConfig(domain).baseUrl;
-  const mergedHeader = [
-    `/*`,
-    ` アプリ名: ${appName}`,
-    ` 設定URL: ${baseUrl}/k/admin/app/flow?app=${appId}`,
-    ` マージ一覧:`,
-    ...files.map((f) => ` - ${path.basename(f)}`),
-    ` 除外一覧:`,
-    ...(excluded.length
-      ? excluded.map((f) => ` - ${path.basename(f)}`)
-      : [" - なし"]),
-    `*/\n\n`,
-  ].join("\n");
-
-  const bodyParts = await Promise.all(
-    files.map(async (f) => {
-      const content = await fs.readFile(f, "utf-8");
-      const relativePath = path.relative(appDir, f).replace(/\\/g, "/");
-      return `/* --- Original File: ${relativePath} --- */\n${content}\n\n`;
-    }),
-  );
-
-  const mergedContent = mergedHeader + bodyParts.join("");
-
-  if (type === "js") {
-    // 目次生成 (AIの有無に関わらず実行)
-    await generateSpecificationToc(appDir, mergedContent);
-  }
 };
 
 /**

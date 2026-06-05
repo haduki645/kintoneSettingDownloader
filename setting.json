@@ -385,17 +385,5 @@
         ]
       }
     ]
-  },
-  "excludeFromMerge": [
-    "010_config.js",
-    "020_pastRecord.js",
-    "030_commonFunction.js",
-    "070_newsSystemCommonLibs.js",
-    "KintoneRestAPIClient_v2.0.35.min.js",
-    "Kuc.js",
-    "index_search_module.js",
-    "index_search_moduleV2.js",
-    "moji.js",
-    "sweetalert2.min.js"
-  ]
+  }
 }

@@ -14,8 +14,6 @@ export interface Setting {
     ids?: AppId[];
     groups?: AppGroup[];
   };
-  excludeFromMerge?: string[];
-  maxCacheCount?: number;
 }
 
 export interface KintoneEnvConfig {

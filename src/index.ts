@@ -5,7 +5,6 @@ import { parseArgs } from "node:util";
 import { Setting, AppGroup, AppId } from "./types";
 import {
   getTimestampedDirName,
-  getPastResultDirs,
   cleanJsonForComparison,
   copyFilesUnderGroupFolder,
   copyFilesUnderTopFolder,
@@ -15,7 +14,7 @@ import { safeRunAsync, toSafeFileName } from "./utils";
 
 // メイン処理
 const main = async () => {
-  const { values, positionals } = parseArgs({
+  const { positionals } = parseArgs({
     args: process.argv.slice(2),
     options: {},
     allowPositionals: true,
@@ -25,7 +24,6 @@ const main = async () => {
     positionals.length > 0 ? positionals : [CONSTANTS.FILE_SETTING_JSON];
 
   const baseResultDir = path.join(process.cwd(), CONSTANTS.DIR_RESULT);
-  const pastDirsNames = await getPastResultDirs(baseResultDir);
 
   const currentTimestampDirName = getTimestampedDirName();
   let activeTimestampDir = path.join(baseResultDir, currentTimestampDirName);
@@ -99,7 +97,6 @@ const main = async () => {
               appId,
               setting,
               setting.prdDomain || setting.stgDomain, // default domain for individual app
-              targetDir,
               appNameCache,
             );
           } else {
@@ -134,7 +131,6 @@ const main = async () => {
             if (stgId) {
               await processApp(
                 stgId,
-                setting,
                 setting.stgDomain,
                 pairDir,
                 appNameCache,
@@ -144,7 +140,6 @@ const main = async () => {
             if (prdId) {
               await processApp(
                 prdId,
-                setting,
                 setting.prdDomain,
                 pairDir,
                 appNameCache,
