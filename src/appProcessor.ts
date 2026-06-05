@@ -2,7 +2,6 @@ import { CONSTANTS } from "./constants";
 import fs from "fs/promises";
 import path from "path";
 import { fetchKintoneApi, downloadKintoneFile, getEnvConfig } from "./kintone";
-import { Setting } from "./types";
 import {
   generateLookupMd,
   generateViewMd,

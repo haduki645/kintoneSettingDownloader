@@ -12,7 +12,7 @@ export const cleanJsonForComparison = async (jsonDir: string) => {
     if (!file.endsWith(".json")) continue;
     const filePath = path.join(jsonDir, file);
     try {
-      const excludeFiles = [
+      const excludeFiles: readonly string[] = [
         CONSTANTS.FILE_APP_JSON,
         CONSTANTS.FILE_APP_ACL_JSON,
         CONSTANTS.FILE_FIELD_ACL_JSON,

@@ -11,6 +11,7 @@ import {
 } from "./fileOps";
 import { processApp } from "./appProcessor";
 import { safeRunAsync, toSafeFileName } from "./utils";
+import { exec } from "child_process";
 
 // メイン処理
 const main = async () => {
@@ -26,7 +27,7 @@ const main = async () => {
   const baseResultDir = path.join(process.cwd(), CONSTANTS.DIR_RESULT);
 
   const currentTimestampDirName = getTimestampedDirName();
-  let activeTimestampDir = path.join(baseResultDir, currentTimestampDirName);
+  const activeTimestampDir = path.join(baseResultDir, currentTimestampDirName);
 
   await fs.mkdir(activeTimestampDir, { recursive: true });
 
@@ -311,6 +312,9 @@ const main = async () => {
   }
 
   console.log(`\n=== すべての処理が完了しました ===`);
+
+  // 作成したフォルダを開く
+  exec(activeTimestampDir);
 };
 
 // 実行

@@ -57,4 +57,4 @@ export const CONSTANTS = {
   API_ACTIONS: "/k/v1/app/actions.json",
   API_PLUGINS: "/k/v1/app/plugins.json",
   API_FILE: "/k/v1/file.json",
-};
+} as const;
