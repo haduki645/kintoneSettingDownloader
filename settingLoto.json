@@ -1,0 +1,12 @@
+{
+  "stgDomain": "https://bsp-loto.cybozu.com",
+  "prdDomain": "https://bsp-loto.cybozu.com",
+  "apps": {
+    "ids": [
+      {
+        "stg": 348,
+        "prd": 363
+      }
+    ]
+  }
+}

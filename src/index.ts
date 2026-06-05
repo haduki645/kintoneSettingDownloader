@@ -318,7 +318,7 @@ const main = async () => {
 
   console.log(`\n=== すべての処理が完了しました ===`);
 
-  // 作成したフォルダを開く（Windows 以外なら書き換えてください）
+  // 作成したフォルダを開く
   resultDirs
     .filter((resultDir) => resultDir)
     .forEach((resultDir) => exec(`explorer "${resultDir}"`));
